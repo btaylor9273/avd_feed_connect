@@ -7,23 +7,19 @@
 #     call FREEZES the whole session.
 #   * the camera-redirection channel (-DCHANNEL_RDPECAM_CLIENT=ON).
 #
+# The upstream project also bundles a Teams call-optimization add-in. It is
+# deliberately NOT included here: that module builds with network access and
+# resolves Rust crates plus a prebuilt libwebrtc at build time, so it cannot be
+# built air-gapped and its dependency set is not pinned or auditable. The app's
+# Teams settings stay visible but inert without the plugin.
+#
 # Builds and runs on GNOME 51; every source is pinned to a commit for
 # reproducibility.
-app-id: io.github.shakeelosmani.avd_feed_connect
+app-id: io.github.btaylor9273.avd_feed_connect
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
 command: avd-feed-connect
-
-# Build-time only: the Teams call-optimization add-in (freerdp-teams-redir,
-# built below) is a Rust/libwebrtc FreeRDP plugin. It needs the Rust toolchain
-# and clang — its vendored libwebrtc's hermetic libc++ requires clang >= 21.
-# The runtime resolves these to the 26.08 branch, where the lowest available
-# LLVM extension is llvm22 (clang 22, which satisfies >= 21). Neither extension
-# ships in the finished app.
-sdk-extensions:
-  - org.freedesktop.Sdk.Extension.rust-stable
-  - org.freedesktop.Sdk.Extension.llvm22
 
 finish-args:
   - --share=network                 # feed discovery, AAD sign-in, RDP gateway
@@ -36,10 +32,17 @@ finish-args:
   - --socket=pulseaudio             # RDP audio playback + microphone redirect
   - --device=dri                    # GPU for the RDP graphics pipeline
   - --device=all                    # webcam (camera redirection) + input
-  - --talk-name=io.github.shakeelosmani.AvdWorkspaces  # optional GNOME workspace extension
+  - --talk-name=io.github.btaylor9273.AvdWorkspaces  # optional GNOME workspace extension
   - --talk-name=org.kde.StatusNotifierWatcher   # tray icon
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.secrets         # login keyring (libsecret) for the refresh token
+  # Smart card (CAC/PIV) access via the HOST's pcscd: flatpak binds the daemon
+  # socket in and sets PCSCLITE_CSOCK_NAME, which the bundled libpcsclite
+  # honours. Needed so the card can sign the Entra certificate-based sign-in
+  # handshake. No reader driver ships here — pcscd on the host owns the reader.
+  - --socket=pcsc
+  # Point OpenSC at the config installed above, which pins the PIV driver.
+  - --env=OPENSC_CONF=/app/etc/opensc.conf
   - --env=LD_LIBRARY_PATH=/app/lib
 
 # NOTE on ffmpeg: FreeRDP is built WITH_FFMPEG against the GNOME runtime's own
@@ -210,44 +213,74 @@ modules:
         paths:
           - patches/freerdp-0001-client-sdl-strip-terminating-null-from-local-text.patch
 
-  # ---- Teams call-optimization add-in (freerdp-teams-redir) --------------
-  # Unofficial FreeRDP 3 DVC plugin: runs Teams call media on the LOCAL
-  # mic/speakers/camera via libwebrtc instead of the session host. Loaded at
-  # connect time with /dvc:teams-redir when the app's "Optimize Teams calls"
-  # (beta) setting is on; inert otherwise. Built against the FreeRDP above and
-  # installed into its plugin dir. Network is enabled for THIS module only
-  # (Cargo crates, cbindgen, and the ~150 MB LiveKit libwebrtc prebuilt it
-  # downloads); this bundle is self-distributed, not Flathub, so that is
-  # allowed. The add-in and its SDL3 video helper link the bundled FreeRDP and
-  # SDL3; nothing from the Rust/LLVM SDK extensions ships in the app.
-  - name: teams-redir
-    buildsystem: simple
-    build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin
-      build-args:
-        - --share=network
-      env:
-        CARGO_HOME: /run/build/teams-redir/.cargo
-    build-commands:
-      - cargo install cbindgen --root /run/build/teams-redir/.tools
-      # Glob the LLVM SDK extension's actual mount dir (llvm22 here) rather than
-      # hardcoding it, so the exact path can't break the build. clang 22 builds
-      # the vendored libwebrtc (its libc++ needs clang >= 21). Built against the
-      # bundled FreeRDP + SDL3 via /app's pkg-config.
-      - LLVM=$(ls -d /usr/lib/sdk/llvm* 2>/dev/null | head -1);
-        export PATH="$LLVM/bin:/run/build/teams-redir/.tools/bin:$PATH"
-        CC=clang CXX=clang++ LIBCLANG_PATH="$LLVM/lib"
-        PKG_CONFIG_PATH=/app/lib/pkgconfig &&
-        cmake -S . -B build -DCMAKE_BUILD_TYPE=Release &&
-        cmake --build build
-      - install -Dm644 build/libteams-redir-client.so
-        /app/lib/freerdp3/libteams-redir-client.so
-      - install -Dm755 build/cargo/release/teams-redir-video
-        /app/lib/freerdp3/teams-redir-video
+  # ---- smart card (CAC/PIV) support -------------------------------------
+  # Placed LAST, right before the app: flatpak-builder caches modules as a
+  # chain, so appending here keeps the expensive SDL3 -> FreeRDP chain cached.
+  #
+  # pcsc-lite is the CLIENT library only; pcscd runs on the HOST and is reached
+  # through --socket=pcsc, so none of the daemon's dependencies are wanted.
+  - name: pcsc-lite
+    buildsystem: meson
+    config-opts:
+      - -Dlibsystemd=false
+      - -Dlibudev=false
+      - -Dlibusb=false
+      - -Dpolkit=false
+      - -Dserial=false
+      - -Dusbdropdir=/app/lib/pcsc/drivers
+    cleanup:
+      - /bin
+      - /sbin
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+      - /share/man
     sources:
-      - type: git
-        url: https://github.com/vchegwidden/freerdp-teams-redir.git
-        commit: 54051fdc5e8640dfdcb0a63c974936bc1025c6f9
+      - type: archive
+        url: https://pcsclite.apdu.fr/files/pcsc-lite-2.5.3.tar.xz
+        sha256: fe2bb733ecf95e52768907eb00da9f9f3daf180960283e514a05dcc090afa3bd
+
+  # OpenSC provides the PKCS#11 module that reads a CAC/PIV card. GnuTLS (via
+  # glib-networking, which this runtime builds WITH PKCS#11) loads it through
+  # p11-kit for the client-certificate handshake Entra requires. opensc-tool
+  # and pkcs11-tool are kept as the only in-sandbox diagnostics.
+  - name: opensc
+    buildsystem: autotools
+    config-opts:
+      # OpenSC's --enable-strict (its default) adds -Werror, and its own getopt
+      # compat shim trips -Werror=discarded-qualifiers. Upstream treats that as
+      # a warning; turn strict off rather than patch a vendored file.
+      - --disable-strict
+      # Without this it pkg-config-detects /usr/share/bash-completion, which
+      # is read-only during the build.
+      - --with-completiondir=/app/share/bash-completion/completions
+      - --disable-static
+      - --disable-openct
+      - --disable-ctapi
+      - --enable-pcsc
+      - --disable-tests
+      - --disable-doc
+      - --disable-openpace
+      - --with-pcsc-provider=libpcsclite.so.1
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/doc
+      - /share/man
+      - /share/bash-completion
+    post-install:
+      # Force the PIV driver. This card is both a PIV card and a CAC, and
+      # OpenSC 0.26 prefers its "cac" driver, which exposes objects labelled
+      # "CAC Cert 4"/"CAC Cert 5" with no identifiable authentication
+      # certificate. The PIV view is the one that carries "Certificate for PIV
+      # Authentication" (slot 9A) — the credential Entra's certificate-based
+      # sign-in needs — so pin the driver rather than guess at CAC labels.
+      - install -d /app/etc
+      - printf 'app default {\n    card_drivers = PIV-II, default;\n}\n' > /app/etc/opensc.conf
+    sources:
+      - type: archive
+        url: https://github.com/OpenSC/OpenSC/releases/download/0.26.1/opensc-0.26.1.tar.gz
+        sha256: f16291a031d86e570394762e9f35eaf2fcbc2337a49910f3feae42d54e1688cb
 
   # ---- the app itself ----------------------------------------------------
   - name: avd-feed-connect
@@ -259,21 +292,25 @@ modules:
       - install -Dm755 src/avdfeed.py       /app/share/avd-feed-connect/avdfeed.py
       - install -Dm755 src/avd_feed_gui.py  /app/share/avd-feed-connect/avd_feed_gui.py
       - install -Dm755 avd-feed-connect     /app/bin/avd-feed-connect
-      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.desktop
-        /app/share/applications/io.github.shakeelosmani.avd_feed_connect.desktop
-      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.metainfo.xml
-        /app/share/metainfo/io.github.shakeelosmani.avd_feed_connect.metainfo.xml
-      - install -Dm644 io.github.shakeelosmani.avd_feed_connect.svg
-        /app/share/icons/hicolor/scalable/apps/io.github.shakeelosmani.avd_feed_connect.svg
-      - install -Dm644 io.github.shakeelosmani.avd_feed_connect-symbolic.svg
-        /app/share/icons/hicolor/symbolic/apps/io.github.shakeelosmani.avd_feed_connect-symbolic.svg
+      - install -Dm644 io.github.btaylor9273.avd_feed_connect.desktop
+        /app/share/applications/io.github.btaylor9273.avd_feed_connect.desktop
+      - install -Dm644 io.github.btaylor9273.avd_feed_connect.metainfo.xml
+        /app/share/metainfo/io.github.btaylor9273.avd_feed_connect.metainfo.xml
+      - install -Dm644 io.github.btaylor9273.avd_feed_connect.svg
+        /app/share/icons/hicolor/scalable/apps/io.github.btaylor9273.avd_feed_connect.svg
+      - install -Dm644 io.github.btaylor9273.avd_feed_connect-symbolic.svg
+        /app/share/icons/hicolor/symbolic/apps/io.github.btaylor9273.avd_feed_connect-symbolic.svg
       # Tray icon dir handed to the host as IconThemePath. Quickshell loads
       # <dir>/<IconName> verbatim (no extension); other hosts add ".svg".
-      - install -Dm644 io.github.shakeelosmani.avd_feed_connect-symbolic.svg
-        /app/share/avd-feed-connect/tray/io.github.shakeelosmani.avd_feed_connect-symbolic.svg
-      - install -Dm644 io.github.shakeelosmani.avd_feed_connect-symbolic.svg
-        /app/share/avd-feed-connect/tray/io.github.shakeelosmani.avd_feed_connect-symbolic
+      - install -Dm644 io.github.btaylor9273.avd_feed_connect-symbolic.svg
+        /app/share/avd-feed-connect/tray/io.github.btaylor9273.avd_feed_connect-symbolic.svg
+      - install -Dm644 io.github.btaylor9273.avd_feed_connect-symbolic.svg
+        /app/share/avd-feed-connect/tray/io.github.btaylor9273.avd_feed_connect-symbolic
     sources:
-      - type: git
-        url: https://github.com/shakeelosmani/avd_feed_connect.git
-        commit: ddf6aa33b9fe09df5c25ff47f9e26c5613165070
+      # Build the checked-out tree, so cloning this repo and running
+      # ./build.sh produces THIS code. (Upstream pins a published commit here
+      # instead, which would make a clone build upstream's app rather than
+      # yours.) Everything else in this manifest is pinned by commit or
+      # sha256, so the build is still reproducible.
+      - type: dir
+        path: .

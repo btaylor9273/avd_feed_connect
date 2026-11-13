@@ -26,5 +26,5 @@ jobs:
 
       - name: Validate Flatpak manifest and metainfo
         run: |
-          python -c "import yaml; yaml.safe_load(open('io.github.shakeelosmani.avd_feed_connect.yml')); print('manifest YAML OK')"
-          python -c "import xml.etree.ElementTree as ET; ET.parse('io.github.shakeelosmani.avd_feed_connect.metainfo.xml'); print('metainfo XML OK')"
+          python -c "import yaml; yaml.safe_load(open('io.github.btaylor9273.avd_feed_connect.yml')); print('manifest YAML OK')"
+          python -c "import xml.etree.ElementTree as ET; ET.parse('io.github.btaylor9273.avd_feed_connect.metainfo.xml'); print('metainfo XML OK')"

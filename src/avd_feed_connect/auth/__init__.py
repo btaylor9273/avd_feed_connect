@@ -2,5 +2,6 @@
 
 from .oauth import OAuthClient
 from .tokens import TokenStore
+from . import smartcard
 
-__all__ = ["OAuthClient", "TokenStore"]
+__all__ = ["OAuthClient", "TokenStore", "smartcard"]

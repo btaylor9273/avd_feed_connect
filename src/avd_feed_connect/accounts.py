@@ -9,7 +9,7 @@ import sys
 import uuid
 
 from .i18n import _ as tr
-from . import config
+from . import clouds, config
 from .auth.tokens import TokenStore
 from .client import AvdClient
 
@@ -18,6 +18,47 @@ def profile_dir(root, profile_id):
     if not isinstance(profile_id, str) or not re.fullmatch(r'[0-9a-f]{32}', profile_id):
         raise ValueError(tr('Invalid account profile ID'))
     return os.path.join(root, 'accounts', profile_id)
+
+
+def _infer_cloud_key(root, profile_id):
+    """Best guess at an account's cloud from whatever it already cached.
+
+    Accounts saved before clouds were a concept have no ``cloud`` key. Falling
+    back to the default would silently point a US Government account at the
+    commercial endpoints, so look at a host it has actually talked to: the
+    cached feed resources first, then any downloaded .rdp's gateway.
+    """
+    try:
+        directory = profile_dir(root, profile_id)
+    except ValueError:
+        return None
+    try:
+        with open(os.path.join(directory, 'workspaces.json')) as source:
+            cached = json.load(source)
+        for res in cached.get('resources') or []:
+            for key in ('rdp_url', 'icon32'):
+                found = clouds.detect_from_url(res.get(key) or '')
+                if found is not None:
+                    return found.key
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    feed = os.path.join(directory, 'feed')
+    try:
+        names = sorted(name for name in os.listdir(feed) if name.endswith('.rdp'))
+    except OSError:
+        names = []
+    for name in names:
+        try:
+            with open(os.path.join(feed, name), encoding='utf-8', errors='replace') as source:
+                for line in source:
+                    key, _, value = line.strip().partition(':s:')
+                    if key.strip().lower() in ('full address', 'gatewayhostname'):
+                        found = clouds.detect_from_host(value.split(':')[0])
+                        if found is not None:
+                            return found.key
+        except OSError:
+            continue
+    return None
 
 
 def write_json(path, data):
@@ -96,7 +137,32 @@ class ProfileRegistry:
         self.selected_id = profile_id
         self.save()
 
-    def upsert(self, claims, profile_id=None):
+    def cloud_for(self, profile_id=None):
+        """The cloud for an account, inferring and recording it when unknown."""
+        profile_id = profile_id or self.selected_id
+        profile = next((p for p in self.profiles if p['id'] == profile_id), None)
+        if profile is None:
+            return clouds.resolve()
+        key = profile.get('cloud')
+        if not key:
+            key = _infer_cloud_key(self.root, profile['id'])
+            if key:
+                # Record the guess so it is made once, not on every switch.
+                profile['cloud'] = key
+                try:
+                    self.save()
+                except OSError:
+                    pass
+        return clouds.resolve(key)
+
+    def set_cloud(self, profile_id, cloud_key):
+        """Pin an account to a cloud (the Add account chooser / the override)."""
+        profile = next(p for p in self.profiles if p['id'] == profile_id)
+        profile['cloud'] = clouds.resolve(cloud_key).key
+        self.save()
+        return profile
+
+    def upsert(self, claims, profile_id=None, cloud=None):
         if not claims.get('tid') or not claims.get('oid'):
             raise ValueError(tr('Missing account identity'))
         profile = next((p for p in self.profiles
@@ -106,6 +172,8 @@ class ProfileRegistry:
             profile_dir(self.root, profile['id'])
             self.profiles.append(profile)
         profile.update({k: claims[k] for k in ('tid', 'oid', 'upn')})
+        if cloud is not None:
+            profile['cloud'] = clouds.resolve(cloud).key
         self.selected_id = profile['id']
         self.save()
         return profile
@@ -131,8 +199,9 @@ class ProfileRegistry:
             return AvdClient()
         directory = profile_dir(self.root, profile_id)
         store = TokenStore(os.path.join(directory, 'token-cache.json'), account_id=profile_id)
-        client = AvdClient(store, os.path.join(directory, 'feed'))
         profile = next((p for p in self.profiles if p['id'] == profile_id), None)
+        client = AvdClient(store, os.path.join(directory, 'feed'),
+                           cloud=self.cloud_for(profile_id))
         if profile:
             client.upn = profile['upn']
             if profile['tid'] and profile['oid']:

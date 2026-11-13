@@ -6,6 +6,7 @@ that used to be module globals. Callers hold one instance and read/update its
 ``upn`` in one place.
 """
 
+from . import clouds
 from .auth import OAuthClient, TokenStore
 from .feed import FeedClient
 from .rdp import RdpLauncher, download_rdp
@@ -14,14 +15,36 @@ from .rdp import RdpLauncher, download_rdp
 class AvdClient:
     """Feed + connect operations for one signed-in session."""
 
-    def __init__(self, token_store=None, output_dir=None):
+    def __init__(self, token_store=None, output_dir=None, cloud=None):
         self.tokens = token_store or TokenStore()
         self.output_dir = output_dir
-        self.oauth = OAuthClient(self.tokens)
-        self.feed = FeedClient()
-        self.rdp = RdpLauncher()
+        # One client serves one account, so it serves one Azure cloud: the
+        # authority, the AVD scope, the feed endpoint and the token-trust host
+        # list all follow from it.
+        self._cloud = cloud or clouds.resolve()
+        self.oauth = OAuthClient(self.tokens, cloud=self._cloud)
+        self.feed = FeedClient(cloud=self._cloud)
+        self.rdp = RdpLauncher(cloud=self._cloud)
 
     # -- session state (formerly module globals) ----------------------------
+
+    @property
+    def cloud(self):
+        return self._cloud
+
+    @cloud.setter
+    def cloud(self, value):
+        """Re-point this account at another cloud.
+
+        Assigning here has to reach the sub-objects too: each holds its own
+        reference so it can answer without a back-pointer, so setting only the
+        attribute would leave the OAuth authority and the feed endpoint on the
+        old cloud — a silent, confusing half-switch.
+        """
+        self._cloud = value or clouds.resolve()
+        self.oauth.cloud = self._cloud
+        self.feed.cloud = self._cloud
+        self.rdp.cloud = self._cloud
 
     @property
     def upn(self):
@@ -61,7 +84,8 @@ class AvdClient:
         return self.feed.enumerate(token)
 
     def download_rdp(self, token, res):
-        return download_rdp(token, res, output_dir=self.output_dir)
+        return download_rdp(token, res, output_dir=self.output_dir,
+                            cloud=self._cloud)
 
     def launch(self, path):
         return self.rdp.launch(path, self.upn)

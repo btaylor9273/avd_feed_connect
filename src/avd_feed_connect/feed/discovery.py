@@ -39,9 +39,16 @@ def _save_raw(name, body):
 class FeedClient:
     """Enumerates the workspaces/resources an access token is entitled to."""
 
+    def __init__(self, cloud=None):
+        # The feed-discovery endpoint and the set of hosts the token may be
+        # sent to are both cloud-specific, so one FeedClient serves one cloud.
+        self.cloud = cloud
+
     def enumerate(self, token):
         """Return a list of resource dicts across all tenant feeds."""
-        st, _, body = http.get(config.DISCOVERY, token, config.ACCEPT_DISCOVERY)
+        cloud = self.cloud or config.CLOUD
+        st, _, body = http.get(cloud.discovery, token, config.ACCEPT_DISCOVERY,
+                               cloud=cloud)
         _save_raw("00_feeddiscovery.xml", body)
         if st != 200:
             sys.exit(tr("Feed discovery failed ({status}): {details}").format(status=st, details=body[:400]))
@@ -55,7 +62,8 @@ class FeedClient:
             if not url:
                 continue
             try:
-                st, _, body = http.get(url, token, config.ACCEPT_FEED)
+                st, _, body = http.get(url, token, config.ACCEPT_FEED,
+                                       cloud=cloud)
             except ValueError as e:
                 print(f"  ! skipping tenant feed: {e}", file=sys.stderr)
                 continue

@@ -163,3 +163,98 @@ def test_missing_registry_does_not_create_a_backup(tmp_path):
     registry = ProfileRegistry(str(tmp_path))
     assert registry.profiles == []
     assert list(tmp_path.iterdir()) == []
+
+
+# -- per-account Azure cloud ------------------------------------------------
+
+def test_cloud_round_trips(tmp_path):
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()), cloud='usgov')
+    assert profile['cloud'] == 'usgov'
+    assert ProfileRegistry(str(tmp_path)).cloud_for(profile['id']).key == 'usgov'
+
+
+def test_cloud_defaults_to_commercial_with_nothing_to_infer_from(tmp_path):
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()))
+    assert 'cloud' not in profile
+    assert registry.cloud_for(profile['id']).key == 'commercial'
+
+
+def test_a_garbage_cloud_falls_back_without_discarding_the_registry(tmp_path):
+    """An unknown value must not trip the invalid-registry path, which renames
+    the user's accounts.json out of the way."""
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()))
+    profile['cloud'] = 'atlantis'
+    registry.save()
+    reloaded = ProfileRegistry(str(tmp_path))
+    assert len(reloaded.profiles) == 1
+    assert reloaded.cloud_for(profile['id']).key == 'commercial'
+    assert not list(tmp_path.glob('accounts.json.invalid-*'))
+
+
+def test_set_cloud(tmp_path):
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()))
+    registry.set_cloud(profile['id'], 'usgov')
+    assert ProfileRegistry(str(tmp_path)).cloud_for(profile['id']).key == 'usgov'
+    registry.set_cloud(profile['id'], 'nonsense')
+    assert ProfileRegistry(str(tmp_path)).cloud_for(profile['id']).key == 'commercial'
+
+
+def test_cloud_is_inferred_from_a_cached_rdp_gateway(tmp_path):
+    """Accounts saved before clouds existed carry no key; pointing them at the
+    commercial endpoints would silently break a working US Government account."""
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()))
+    feed = os.path.join(profile_dir(str(tmp_path), profile['id']), 'feed')
+    os.makedirs(feed, exist_ok=True)
+    with open(os.path.join(feed, 'desktop.rdp'), 'w') as handle:
+        handle.write('full address:s:rdgateway-r1.wvd.azure.us\n')
+    assert registry.cloud_for(profile['id']).key == 'usgov'
+    # The guess is recorded, so it is made once rather than on every switch.
+    assert ProfileRegistry(str(tmp_path)).profiles[0]['cloud'] == 'usgov'
+
+
+def test_cloud_is_inferred_from_cached_workspaces(tmp_path):
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()))
+    directory = profile_dir(str(tmp_path), profile['id'])
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, 'workspaces.json'), 'w') as handle:
+        json.dump({'upn': 'x', 'resources': [
+            {'rdp_url': 'https://rdweb.wvd.azure.us/api/arm/rdpfile?x=1'}]}, handle)
+    assert registry.cloud_for(profile['id']).key == 'usgov'
+
+
+def test_a_commercial_cache_infers_nothing_and_stays_default(tmp_path):
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()))
+    feed = os.path.join(profile_dir(str(tmp_path), profile['id']), 'feed')
+    os.makedirs(feed, exist_ok=True)
+    with open(os.path.join(feed, 'desktop.rdp'), 'w') as handle:
+        handle.write('full address:s:rdgateway-r1.wvd.microsoft.com\n')
+    assert registry.cloud_for(profile['id']).key == 'commercial'
+    assert 'cloud' not in ProfileRegistry(str(tmp_path)).profiles[0]
+
+
+def test_an_explicit_cloud_is_never_overridden_by_inference(tmp_path):
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()), cloud='commercial')
+    feed = os.path.join(profile_dir(str(tmp_path), profile['id']), 'feed')
+    os.makedirs(feed, exist_ok=True)
+    with open(os.path.join(feed, 'desktop.rdp'), 'w') as handle:
+        handle.write('full address:s:rdgateway-r1.wvd.azure.us\n')
+    assert registry.cloud_for(profile['id']).key == 'commercial'
+
+
+def test_the_client_is_built_with_the_profile_cloud(tmp_path):
+    registry = ProfileRegistry(str(tmp_path))
+    profile = registry.upsert(claims_from_token(token()), cloud='usgov')
+    client = registry.client(profile['id'])
+    assert client.cloud.key == 'usgov'
+    # ...and the sub-objects agree, or the authority and feed would disagree.
+    assert client.oauth.cloud.key == 'usgov'
+    assert client.feed.cloud.key == 'usgov'
+    assert 'login.microsoftonline.us' in client.oauth.login

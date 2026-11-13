@@ -119,7 +119,7 @@ def check(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--flatpak", default="io.github.shakeelosmani.avd_feed_connect")
+    parser.add_argument("--flatpak", default="io.github.btaylor9273.avd_feed_connect")
     parser.add_argument("--library")
     parser.add_argument("--provide", choices=("failure", "html", "empty"), help=argparse.SUPPRESS)
     args = parser.parse_args()

@@ -15,7 +15,7 @@ from .. import config
 
 # libsecret schema id — kept identical to older releases so tokens they stored
 # are still found.
-_SCHEMA_ID = "io.github.shakeelosmani.avd_feed_connect"
+_SCHEMA_ID = "io.github.btaylor9273.avd_feed_connect"
 
 
 class TokenStore:

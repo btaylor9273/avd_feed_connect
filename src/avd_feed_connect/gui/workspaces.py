@@ -4,8 +4,8 @@ from typing import Protocol
 
 from gi.repository import Gio, GLib
 
-BUS_NAME = "io.github.shakeelosmani.AvdWorkspaces"
-OBJECT_PATH = "/io/github/shakeelosmani/AvdWorkspaces"
+BUS_NAME = "io.github.btaylor9273.AvdWorkspaces"
+OBJECT_PATH = "/io/github/btaylor9273/AvdWorkspaces"
 
 
 def _bridge_available():

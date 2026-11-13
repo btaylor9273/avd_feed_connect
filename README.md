@@ -22,6 +22,27 @@ Microsoft's Windows App), and connect over RDP.
   (switchable in-app, or follow the system). Example data shown.</em>
 </p>
 
+## Origin and changes
+
+This is a modified build of
+[shakeelosmani/avd_feed_connect](https://github.com/shakeelosmani/avd_feed_connect)
+(MIT, see `LICENSE`), published under its own application ID
+(`io.github.btaylor9273.avd_feed_connect`) so it does not shadow the original.
+
+Changes in this fork:
+
+* **Azure US Government (GCC High / DoD) support** — a cloud table selecting the
+  Entra authority, AVD scope and feed endpoint per account, with FreeRDP's
+  sovereign-cloud override passed at connect time.
+* **Smart card (CAC/PIV) sign-in** — the card answers Entra's
+  certificate-based authentication inside the app; OpenSC and the pcsc-lite
+  client library are bundled.
+* **The Teams call-optimization add-in is NOT bundled.** It builds with network
+  access and unpinned Rust dependencies, which is incompatible with an
+  air-gapped, auditable build. Its settings remain visible but inert.
+
+For review: `docs/DEPENDENCIES.md`, `docs/PERMISSIONS.md`, `docs/OFFLINE-BUILD.md`.
+
 ## Why
 
 Linux has FreeRDP, but no client that does **feed discovery** — the step where
@@ -35,7 +56,8 @@ drives a bundled, hardened FreeRDP for the actual connection.
    view). This is the same flow the official clients use, so Conditional Access
    policies that block the device-code flow are honored.
 2. **Feed discovery** against `rdweb.wvd.microsoft.com/api/arm/feeddiscovery`
-   (sending the approved `X-MS-User-Agent` the service requires).
+   — or `rdweb.wvd.azure.us` for an Azure US Government account (sending the
+   approved `X-MS-User-Agent` the service requires).
 3. **Workspace grid** with the real per-resource icons; double-click to connect.
 4. **Connect** by downloading the resource's `.rdp` from the feed and launching
    the bundled `sdl-freerdp` with `/gateway:type:arm /sec:aad`. The
@@ -70,6 +92,78 @@ and **Default settings…**. These apply across accounts; right-clicking a
 workspace changes that account's resource preferences. The CLI uses the
 selected saved account; `logout` clears that account's credentials and profile.
 A combined view of all accounts is deferred to a later release.
+
+## Azure US Government (GCC High / DoD) and CAC sign-in
+
+Azure Virtual Desktop exists in more than one cloud, and each has its own Entra
+authority, AVD scope and feed endpoint. Pick the cloud when you add the
+account — **Add account** asks, because the authority has to be known *before*
+sign-in and so cannot be discovered from the feed:
+
+| | Commercial | US Government |
+|---|---|---|
+| Sign-in | `login.microsoftonline.com` | `login.microsoftonline.us` |
+| Feed | `rdweb.wvd.microsoft.com` | `rdweb.wvd.azure.us` |
+| AVD scope | `https://www.wvd.microsoft.com/.default` | `https://www.wvd.azure.us/.default` |
+
+Accounts added before this release are classified automatically from the
+gateway host in their cached feed, so an existing `.mil` account keeps working.
+`AVD_CLOUD=usgov` pins the cloud for the CLI and for new accounts.
+
+For the connection itself, FreeRDP defaults to the commercial authority and
+scope no matter which gateway the `.rdp` names, and has no sovereign-cloud
+detection in any release so far
+([FreeRDP#13457](https://github.com/FreeRDP/FreeRDP/issues/13457)). The app
+therefore passes FreeRDP's own override explicitly:
+
+```
+/azure:ad:login.microsoftonline.us,tenantid:<aadtenantid>,use-tenantid,avd-scope:<gov scope>
+```
+
+### Signing in with a smart card (CAC / PIV)
+
+Some organizations require a smart card and accept nothing else. The card has
+to sign the TLS handshake itself, which the app's embedded sign-in window
+cannot do reliably — so turn on **Settings → Sign-in → Sign in using my
+browser**. Sign-in then happens in your normal browser, which already knows how
+to use your card, and the app catches the result on a short-lived
+`http://127.0.0.1:<port>` listener so nothing has to be copied by hand. The
+connection-time token uses the same listener, via FreeRDP's
+`/azure:avd-access:`.
+
+**This app never touches your card, your reader or your PIN.** There is no
+PKCS#11 code here and no smart card redirection into the session; your browser
+owns all of it. Make sure your browser can see the card before you start —
+for Chrome:
+
+```bash
+modutil -dbdir sql:$HOME/.pki/nssdb -list      # should list an OpenSC module
+```
+
+and in Firefox, *Settings → Privacy & Security → Security Devices*.
+
+If sign-in still reports **`AADSTS500192`** ("no valid certificate was
+detected") while your browser clearly can see the card, the problem is on the
+Entra side rather than in any client. Two things to raise with whoever
+administers the tenant:
+
+* the issuing CA chain (for a DoD CAC, the DoD root and intermediates) must be
+  uploaded to the tenant's trusted certificate store, or the sign-in endpoint
+  will not advertise it as acceptable and your browser sends no certificate;
+* the certificate must map to your account. On a DoD CAC the only certificate
+  usable for TLS client authentication is the **PIV Authentication** one, and
+  it identifies you by **EDIPI** (`<edipi>@mil`) — *not* your `@army.mil`
+  address, which lives on the e-mail certificates. The tenant's
+  certificate-based-authentication username binding has to match whichever one
+  your card actually carries.
+
+You can see what your own card carries with:
+
+```bash
+pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so \
+    --read-object --type cert --id 01 -o /tmp/piv.der
+openssl x509 -inform der -in /tmp/piv.der -noout -ext subjectAltName -ext extendedKeyUsage
+```
 
 ## Silent connection sign-in
 
@@ -127,25 +221,25 @@ headphones during a Teams call) **freezes the whole session**.
 
 ## Install
 
-[![Latest release](https://img.shields.io/github/v/release/shakeelosmani/avd_feed_connect)](https://github.com/shakeelosmani/avd_feed_connect/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/btaylor9273/avd_feed_connect)](https://github.com/btaylor9273/avd_feed_connect/releases/latest)
 
 **Easiest — one click / one command** (from the signed repo on GitHub Pages):
 
-👉 **[Install (avd_feed_connect.flatpakref)](https://shakeelosmani.github.io/avd_feed_connect/avd_feed_connect.flatpakref)**
+👉 **[Install (avd_feed_connect.flatpakref)](https://btaylor9273.github.io/avd_feed_connect/avd_feed_connect.flatpakref)**
 
 Opening that file installs the app through GNOME Software / your Flatpak handler.
 Or from a terminal:
 
 ```bash
-flatpak install --user https://shakeelosmani.github.io/avd_feed_connect/avd_feed_connect.flatpakref
-flatpak run io.github.shakeelosmani.avd_feed_connect
+flatpak install --user https://btaylor9273.github.io/avd_feed_connect/avd_feed_connect.flatpakref
+flatpak run io.github.btaylor9273.avd_feed_connect
 ```
 
 This adds a small signed remote so the app also **updates** with
 `flatpak update`. The GNOME 51 runtime is pulled from Flathub automatically.
 
 **Alternative — single-file bundle** from the
-[latest release](https://github.com/shakeelosmani/avd_feed_connect/releases/latest):
+[latest release](https://github.com/btaylor9273/avd_feed_connect/releases/latest):
 
 ```bash
 flatpak install --user avd_feed_connect.flatpak
@@ -158,8 +252,8 @@ flatpak install --user avd_feed_connect.flatpak
 ```bash
 flatpak install flathub org.gnome.Platform//51 org.gnome.Sdk//51 org.flatpak.Builder
 flatpak run org.flatpak.Builder --user --install --force-clean build-dir \
-  io.github.shakeelosmani.avd_feed_connect.yml
-flatpak run io.github.shakeelosmani.avd_feed_connect
+  io.github.btaylor9273.avd_feed_connect.yml
+flatpak run io.github.btaylor9273.avd_feed_connect
 ```
 
 > **Building your own code changes?** The manifest above pins the app module to a
@@ -170,7 +264,7 @@ flatpak run io.github.shakeelosmani.avd_feed_connect
 > tracked file:
 >
 > ```bash
-> cp io.github.shakeelosmani.avd_feed_connect.yml local.yml
+> cp io.github.btaylor9273.avd_feed_connect.yml local.yml
 > ```
 >
 > In `local.yml`, change only the last module's (`avd-feed-connect`) source from
@@ -383,7 +477,7 @@ Connect Linux**, open the **Environment** section, and add a line like
 `AVD_SCALE=150`. Or from a terminal:
 
 ```bash
-flatpak override --user --env=AVD_SCALE=150 io.github.shakeelosmani.avd_feed_connect
+flatpak override --user --env=AVD_SCALE=150 io.github.btaylor9273.avd_feed_connect
 ```
 
 Both methods write the same setting.

@@ -2,8 +2,8 @@ import Gio from 'gi://Gio';
 import Meta from 'gi://Meta';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 
-const BUS_NAME = 'io.github.shakeelosmani.AvdWorkspaces';
-const OBJECT_PATH = '/io/github/shakeelosmani/AvdWorkspaces';
+const BUS_NAME = 'io.github.btaylor9273.AvdWorkspaces';
+const OBJECT_PATH = '/io/github/btaylor9273/AvdWorkspaces';
 const XML = `<node><interface name="${BUS_NAME}">
 <method name="PlaceWindow"><arg type="s" direction="in" name="title"/>
 <arg type="b" direction="out" name="placed"/></method>

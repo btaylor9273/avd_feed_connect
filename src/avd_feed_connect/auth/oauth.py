@@ -21,7 +21,7 @@ import urllib.parse
 import webbrowser
 
 from ..i18n import _ as tr
-from .. import config, http
+from .. import clouds, config, http
 from .tokens import TokenStore
 
 
@@ -32,8 +32,12 @@ def _b64url(b):
 class OAuthClient:
     """Acquires access tokens for the AVD feed, interactively or silently."""
 
-    def __init__(self, token_store=None):
+    def __init__(self, token_store=None, cloud=None):
         self.tokens = token_store or TokenStore()
+        # Which Azure cloud this account lives in. Decides the Entra authority,
+        # the AVD scope and which hosts may receive the bearer token, so it is
+        # per-account state rather than a process-wide constant.
+        self.cloud = cloud or clouds.resolve()
         # UPN is normally learned from the id_token; AVD_UPN pins it (and
         # pre-fills the login hint), in which case set_upn_from_token defers.
         self.upn = os.environ.get("AVD_UPN", "")
@@ -41,6 +45,11 @@ class OAuthClient:
         # GUI can tell the user the real reason instead of "sign in again".
         self.last_refresh_error = ""
         self.account_identity = None
+
+    @property
+    def login(self):
+        """This account's v2.0 authorize/token base (cloud + configured tenant)."""
+        return self.cloud.login(config.TENANT)
 
     # -- interactive flows --------------------------------------------------
 
@@ -54,13 +63,13 @@ class OAuthClient:
         state = secrets.token_urlsafe(16)
         params = {
             "client_id": config.CLIENT_ID, "response_type": "code",
-            "redirect_uri": config.REDIRECT, "scope": config.SCOPE,
+            "redirect_uri": config.REDIRECT, "scope": self.cloud.scope,
             "code_challenge": challenge, "code_challenge_method": "S256",
             "state": state, "prompt": "select_account",
         }
         if self.upn:
             params["login_hint"] = self.upn
-        url = config.LOGIN + "/authorize?" + urllib.parse.urlencode(params)
+        url = self.login + "/authorize?" + urllib.parse.urlencode(params)
         print("\nOpen this URL in your browser and sign in:\n\n  " + url + "\n")
         try:
             webbrowser.open(url)
@@ -90,9 +99,9 @@ class OAuthClient:
             sys.exit("state mismatch — aborting for safety, try again")
         if not code:
             sys.exit("no authorization code found in what you pasted")
-        st, tok = http.post(config.LOGIN + "/token", {
+        st, tok = http.post(self.login + "/token", {
             "grant_type": "authorization_code", "client_id": config.CLIENT_ID,
-            "code": code, "redirect_uri": config.REDIRECT, "scope": config.SCOPE,
+            "code": code, "redirect_uri": config.REDIRECT, "scope": self.cloud.scope,
             "code_verifier": verifier})
         if st != 200:
             sys.exit(f"token exchange failed ({st}): {tok.get('error','')}: "
@@ -100,15 +109,15 @@ class OAuthClient:
         return tok
 
     def _device_code(self):
-        st, dc = http.post(config.LOGIN + "/devicecode",
-                           {"client_id": config.CLIENT_ID, "scope": config.SCOPE})
+        st, dc = http.post(self.login + "/devicecode",
+                           {"client_id": config.CLIENT_ID, "scope": self.cloud.scope})
         if st != 200:
             sys.exit(f"devicecode request failed ({st}): {dc}")
         print("\n>>> " + dc["message"] + "\n", flush=True)
         interval = dc.get("interval", 5)
         while True:
             time.sleep(interval)
-            st, tok = http.post(config.LOGIN + "/token", {
+            st, tok = http.post(self.login + "/token", {
                 "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
                 "client_id": config.CLIENT_ID, "device_code": dc["device_code"]})
             if st == 200:
@@ -125,9 +134,9 @@ class OAuthClient:
     # -- silent renewal -----------------------------------------------------
 
     def _refresh(self, rt):
-        st, tok = http.post(config.LOGIN + "/token", {
+        st, tok = http.post(self.login + "/token", {
             "grant_type": "refresh_token", "client_id": config.CLIENT_ID,
-            "scope": config.SCOPE, "refresh_token": rt})
+            "scope": self.cloud.scope, "refresh_token": rt})
         if st != 200:
             self.last_refresh_error = (
                 f"{tok.get('error', '?')}: {tok.get('error_description', '')}")

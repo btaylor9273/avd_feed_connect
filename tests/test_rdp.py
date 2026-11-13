@@ -226,7 +226,8 @@ def test_client_hotkeys_auto_and_bad_config_left_alone(tmp_path):
 
 def test_account_downloads_keep_same_title_resources_separate(tmp_path, monkeypatch):
     from avd_feed_connect.rdp import resources
-    monkeypatch.setattr(resources.http, 'get', lambda url, token: (200, {}, 'username:s:' + token))
+    monkeypatch.setattr(resources.http, 'get',
+                        lambda url, token, accept='*/*', cloud=None: (200, {}, 'username:s:' + token))
     a = resources.download_rdp('a', {'id': 'one', 'title': 'Desktop', 'rdp_url': 'https://example.microsoft.com/one'}, str(tmp_path / 'a'))
     b = resources.download_rdp('b', {'id': 'two', 'title': 'Desktop', 'rdp_url': 'https://example.microsoft.com/two'}, str(tmp_path / 'a'))
     c = resources.download_rdp('c', {'id': 'one', 'title': 'Desktop', 'rdp_url': 'https://example.microsoft.com/one'}, str(tmp_path / 'b'))
@@ -341,3 +342,34 @@ def test_custom_hotkeys_reject_duplicate_unknown_and_malformed_keys(tmp_path):
         assert not apply_client_hotkeys({'modifiers': ['KMOD_RSHIFT'], 'bindings': bindings}, str(path))
         assert path.read_text() == '{"keep": true}'
     assert not apply_client_hotkeys({'modifiers': [{}], 'bindings': dict(HOTKEY_DEFAULTS)}, str(path))
+
+
+def test_rdp_download_is_checked_against_the_account_cloud(tmp_path, monkeypatch):
+    """A US Government .rdp URL must pass for a gov account and fail for a
+    commercial one — the download was initially missed by the cloud threading,
+    which made every gov connection fail at download time."""
+    import pytest
+    from avd_feed_connect import clouds
+    from avd_feed_connect.rdp import resources
+
+    seen = {}
+
+    def fake_get(url, token, accept='*/*', cloud=None):
+        from avd_feed_connect import config
+        config.is_trusted_url(url, cloud) or (_ for _ in ()).throw(
+            ValueError('untrusted'))
+        seen['cloud'] = cloud
+        return 200, {}, 'username:s:x'
+
+    monkeypatch.setattr(resources.http, 'get', fake_get)
+    res = {'id': 'one', 'title': 'Desktop',
+           'rdp_url': 'https://rdweb.wvd.azure.us/api/arm/rdpfile?id=1'}
+
+    path = resources.download_rdp('t', res, str(tmp_path / 'gov'),
+                                  cloud=clouds.CLOUDS['usgov'])
+    assert open(path).read() == 'username:s:x'
+    assert seen['cloud'].key == 'usgov'
+
+    with pytest.raises(ValueError):
+        resources.download_rdp('t', res, str(tmp_path / 'com'),
+                               cloud=clouds.DEFAULT)

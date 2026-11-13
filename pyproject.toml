@@ -20,8 +20,8 @@ dependencies = []
 test = ["pytest>=7"]
 
 [project.urls]
-Homepage = "https://github.com/shakeelosmani/avd_feed_connect"
-Issues = "https://github.com/shakeelosmani/avd_feed_connect/issues"
+Homepage = "https://github.com/btaylor9273/avd_feed_connect"
+Issues = "https://github.com/btaylor9273/avd_feed_connect/issues"
 
 [project.scripts]
 avd-feed = "avd_feed_connect.cli:main"

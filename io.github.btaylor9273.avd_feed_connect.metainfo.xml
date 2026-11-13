@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.shakeelosmani.avd_feed_connect</id>
+  <id>io.github.btaylor9273.avd_feed_connect</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
   <name>AVD Feed + Connect Linux</name>
   <summary>Connect to your Azure Virtual Desktop workspaces</summary>
 
-  <developer id="io.github.shakeelosmani">
+  <developer id="io.github.btaylor9273">
     <name>Shakeel Osmani</name>
   </developer>
 
@@ -31,18 +31,18 @@
     </p>
   </description>
 
-  <launchable type="desktop-id">io.github.shakeelosmani.avd_feed_connect.desktop</launchable>
+  <launchable type="desktop-id">io.github.btaylor9273.avd_feed_connect.desktop</launchable>
 
   <screenshots>
     <screenshot type="default">
       <caption>Your Azure Virtual Desktop workspaces</caption>
-      <image>https://raw.githubusercontent.com/shakeelosmani/avd_feed_connect/main/screenshots/workspaces.png</image>
+      <image>https://raw.githubusercontent.com/btaylor9273/avd_feed_connect/main/screenshots/workspaces.png</image>
     </screenshot>
   </screenshots>
 
-  <url type="homepage">https://github.com/shakeelosmani/avd_feed_connect</url>
-  <url type="bugtracker">https://github.com/shakeelosmani/avd_feed_connect/issues</url>
-  <url type="vcs-browser">https://github.com/shakeelosmani/avd_feed_connect</url>
+  <url type="homepage">https://github.com/btaylor9273/avd_feed_connect</url>
+  <url type="bugtracker">https://github.com/btaylor9273/avd_feed_connect/issues</url>
+  <url type="vcs-browser">https://github.com/btaylor9273/avd_feed_connect</url>
 
   <categories>
     <category>Network</category>
@@ -60,6 +60,26 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.11.0" date="2026-11-13">
+      <description>
+        <ul>
+          <li>Azure US Government support (GCC High / DoD): choose the cloud
+          when you add an account and the app uses that cloud's Entra sign-in,
+          AVD scope and feed endpoint throughout. Accounts added before this
+          release are classified automatically from their cached feed, so an
+          existing .mil account keeps working. Connections now pass FreeRDP's
+          sovereign-cloud override explicitly, because FreeRDP otherwise
+          defaults to the commercial authority and scope whatever gateway the
+          connection file names.</li>
+          <li>New option to sign in using your browser instead of the
+          app's own window, for organizations that require a smart card
+          (CAC/PIV) or another method the embedded window cannot complete. The
+          authorization code is caught on a temporary local port, so nothing
+          has to be copied by hand, and the app never sees your card or PIN.
+          The connection-time token uses the same path.</li>
+        </ul>
+      </description>
+    </release>
     <release version="0.10.1" date="2026-11-11">
       <description>
         <ul>

@@ -32,7 +32,7 @@ _FEED_XML = """<?xml version="1.0"?>
 def test_enumerate_flattens_resources(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "OUT", str(tmp_path))  # raw XML dumps go to tmp
 
-    def fake_get(url, token, accept="*/*"):
+    def fake_get(url, token, accept="*/*", cloud=None):
         body = _DISCOVERY_XML if url == config.DISCOVERY else _FEED_XML
         return 200, {}, body
 
@@ -68,7 +68,7 @@ def test_untrusted_feed_url_is_skipped_without_sending_token(monkeypatch, tmp_pa
     # Discovery itself goes through the real http.get (trusted host) — stub just that hop.
     real_get = http.get
 
-    def get(url, token, accept="*/*"):
+    def get(url, token, accept="*/*", cloud=None):
         if url == config.DISCOVERY:
             return 200, {}, evil
         return real_get(url, token, accept)

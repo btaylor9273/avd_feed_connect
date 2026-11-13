@@ -56,7 +56,7 @@ import uuid
 # initializes its renderer. setdefault so a user can still force the GPU path.
 os.environ.setdefault("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 
-APP_ID = "io.github.shakeelosmani.avd_feed_connect"
+APP_ID = "io.github.btaylor9273.avd_feed_connect"
 
 import gi  # noqa: E402
 gi.require_version("Gtk", "4.0")
@@ -71,14 +71,14 @@ from gi.repository import WebKit  # noqa: E402
 
 # The feed/auth package is installed as a sibling directory next to this file.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from avd_feed_connect import config, http  # noqa: E402
+from avd_feed_connect import clouds, config, http  # noqa: E402
 from avd_feed_connect.auth.oauth import _b64url  # noqa: E402
 from avd_feed_connect.client import AvdClient  # noqa: E402
 from avd_feed_connect.gui.workspaces import select_backend as workspace_backend  # noqa: E402
 from avd_feed_connect.rdp.security import resolve_security  # noqa: E402
 from avd_feed_connect.rdp.attempt import ConnectionAttempt  # noqa: E402
 from avd_feed_connect.rdp.launcher import (  # noqa: E402
-    apply_client_hotkeys, build_display_args, session_log_path,
+    apply_client_hotkeys, build_azure_args, build_display_args, session_log_path,
     HOTKEY_MODIFIER_NAMES, HOTKEY_DEFAULTS, HOTKEY_ACTIONS, HOTKEY_KEYS)
 from avd_feed_connect.rdp.resources import (  # noqa: E402
     rdp_is_remoteapp, set_rdp_desktop_mode)
@@ -91,13 +91,44 @@ from avd_feed_connect.gui.tray import TrayIcon  # noqa: E402
 
 from avd_feed_connect.accounts import ProfileRegistry, profile_dir, claims_from_token  # noqa: E402
 from avd_feed_connect.auth.tokens import TokenStore  # noqa: E402
+from avd_feed_connect.auth import smartcard  # noqa: E402
 from avd_feed_connect.gui.session import AccountSession  # noqa: E402
 
 APP_NAME = "AVD Feed + Connect Linux"
-APP_VERSION = "0.10.1"
+APP_VERSION = "0.11.0"
 
 
 
+
+
+def _code_from_redirect(text, state=None):
+    """``(code, error)`` from a pasted redirect URL, or a bare code.
+
+    ``state`` is checked whenever the pasted URL carries one, which is the
+    point of pasting the address rather than just the code: it binds the
+    response to the request this app made.
+    """
+    text = (text or "").strip()
+    if not text:
+        return None, tr("Paste the address the browser ended on.")
+    # Decide URL vs bare code FIRST: an error response or a truncated address
+    # has no "code=" in it and must not be mistaken for a code.
+    if "://" in text or text.startswith("?") or "?" in text:
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(text).query)
+        if "error" in query:
+            return None, (query.get("error_description") or query["error"])[0]
+        returned = query.get("state", [None])[0]
+        if state is not None and returned is not None and returned != state:
+            return None, tr("Sign-in state mismatch, please retry.")
+        code = (query.get("code") or [""])[0]
+        if not code:
+            return None, tr("That address has no sign-in code in it.")
+        return code, None
+    # A bare code, pasted without the surrounding address. Accepted, but it
+    # carries no state to check, so the address is what we ask for.
+    if any(c.isspace() for c in text):
+        return None, tr("That does not look like a sign-in address.")
+    return text, None
 
 
 class AvdApp(Gtk.Application):
@@ -121,6 +152,21 @@ class AvdApp(Gtk.Application):
                 profile_dir(self.registry.root, profile['id']))
         self.selected_id = self.registry.selected_id
         self._adding = None
+        # Make the bundled PKCS#11 module visible to GnuTLS. p11-kit reads
+        # module configs from its system dir (read-only here) and from
+        # $XDG_CONFIG_HOME, with no env var to relocate either. Idempotent, and
+        # a no-op unpackaged where the host's module is already registered.
+        smartcard.ensure_module_registered()
+        # WebKit terminates TLS in a separate sandboxed process, and a PKCS#11
+        # certificate cannot be handed over as bytes (the key stays on the
+        # card), so that process must open the card itself. Must happen before
+        # any WebView starts a web process.
+        smartcard.grant_sandbox_access(WebKit.WebContext.get_default())
+        # Card PINs for this process only: never written to settings, the
+        # keyring, or any log. Cleared on sign-out.
+        self._cac_pins = {}
+        # Holds a WebKit auth request alive while a PIN dialog is open.
+        self._pending_auth = None
         self.win = None
         self.stack = None
         self.grid = None
@@ -323,9 +369,65 @@ class AvdApp(Gtk.Application):
     def _add_account(self):
         if self._adding:
             return
-        profile = {'id': uuid.uuid4().hex, 'tid': '', 'oid': '', 'upn': ''}
+        # Which cloud has to be settled BEFORE signing in: it decides the Entra
+        # authority, so it cannot be discovered from the feed first.
+        self._choose_cloud(self._begin_add_account)
+
+    def _choose_cloud(self, proceed):
+        """Ask which Microsoft cloud a new account lives in, then ``proceed(key)``.
+
+        Skipped when there is nothing to choose — a single configured cloud, or
+        AVD_CLOUD pinning one.
+        """
+        default = clouds.resolve(self._settings.get("_cloud")).key
+        if os.environ.get("AVD_CLOUD") or len(clouds.ORDER) < 2:
+            proceed(default)
+            return
+        dialog = create(Gtk.Window, title=tr("Add account"),
+                        transient_for=self.win, modal=True)
+        dialog.add_css_class("avd-settings")
+        dialog.set_default_size(420, -1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for margin in ("top", "bottom", "start", "end"):
+            getattr(box, f"set_margin_{margin}")(16)
+        box.append(create(Gtk.Label, label=tr("Which Microsoft cloud is this account in?"),
+                          xalign=0, wrap=True))
+        drop = create(Gtk.DropDown, model=strings(list(clouds.LABELS)))
+        drop.set_selected(clouds.ORDER.index(default))
+        box.append(drop)
+        box.append(create(Gtk.Label, xalign=0, wrap=True, label=tr(
+            "Choose US Government for a .mil or GCC High account. This cannot "
+            "be changed later without signing the account in again.")))
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons.set_halign(Gtk.Align.END)
+        cancel = create(Gtk.Button, label=tr("Cancel"))
+        cancel.connect("clicked", lambda *_: dialog.destroy())
+        confirm = create(Gtk.Button, label=tr("Continue"))
+        confirm.add_css_class("suggested-action")
+
+        def apply(*_):
+            index = min(max(drop.get_selected(), 0), len(clouds.ORDER) - 1)
+            key = clouds.ORDER[index]
+            # Remember it as the default for the next account added.
+            self._set_setting("_cloud", key)
+            dialog.destroy()
+            proceed(key)
+
+        confirm.connect("clicked", apply)
+        buttons.append(cancel)
+        buttons.append(confirm)
+        box.append(buttons)
+        dialog.set_child(box)
+        dialog.present()
+
+    def _begin_add_account(self, cloud_key):
+        profile = {'id': uuid.uuid4().hex, 'tid': '', 'oid': '', 'upn': '',
+                   'cloud': clouds.resolve(cloud_key).key}
         session = AccountSession(profile, self.registry.client(profile['id']),
                                  profile_dir(self.registry.root, profile['id']))
+        # registry.client() cannot know the cloud yet (the profile is not saved
+        # until the sign-in succeeds), so point this client at it directly.
+        session.client.cloud = clouds.resolve(cloud_key)
         session.client.upn = ""
         self._adding = session
         self._interactive_signin(session)
@@ -497,6 +599,52 @@ class AvdApp(Gtk.Application):
             cb.connect("toggled", lambda btn, k=key: self._set_tray_option(k, btn.get_active()))
             pbox.append(cb)
             self._tray_toggles.append(cb)
+        pbox.append(Gtk.Separator())
+
+        # Sign-in method. By default the app's own window handles sign-in.
+        # A smart card needs the card itself to sign the TLS handshake, which
+        # the app can do (first option) — or the whole sign-in can be handed to
+        # the browser, which needs one copy-paste because the only redirect
+        # registered for this client is a Microsoft page the app cannot read.
+        signh = create(Gtk.Label, label=tr("SIGN-IN"), xalign=0)
+        signh.add_css_class("menu-head")
+        signh.set_margin_start(4); signh.set_margin_top(2)
+        pbox.append(signh)
+        card_ok = smartcard.available()
+        cac_cb = create(Gtk.CheckButton, label=tr("Use my smart card in this app"))
+        cac_cb.set_active(bool(self._settings.get("_cac")))
+        cac_cb.set_sensitive(card_ok)
+        if not card_ok:
+            bind(cac_cb, 'tooltip_text', tr("No smart card reader detected"))
+        browser_cb = create(Gtk.CheckButton, label=tr("Sign in using my browser instead"))
+        browser_cb.set_active(bool(self._settings.get("_browser_signin")))
+
+        # They are alternatives: the browser cannot hand the code back without
+        # a paste, so it is only worth using when the in-app card path fails.
+        def _on_cac(btn):
+            self._set_flag("_cac", btn.get_active())
+            if btn.get_active() and browser_cb.get_active():
+                browser_cb.set_active(False)
+
+        def _on_browser(btn):
+            self._set_flag("_browser_signin", btn.get_active())
+            if btn.get_active() and cac_cb.get_active():
+                cac_cb.set_active(False)
+
+        cac_cb.connect("toggled", _on_cac)
+        browser_cb.connect("toggled", _on_browser)
+        pbox.append(cac_cb); pbox.append(browser_cb)
+        signin_note = create(Gtk.Label, xalign=0, wrap=True, label=tr(
+            "With a smart card, the app asks for your PIN when the card is "
+            "used and keeps it only until you quit \u2014 it is never saved. The "
+            "browser option needs you to paste one address back, so use it "
+            "only if the card does not work in the app."))
+        signin_note.add_css_class("tile-sub")
+        signin_note.set_margin_start(4)
+        # Cap the natural width or this note stretches the popover (same as
+        # the Teams note below).
+        signin_note.set_max_width_chars(40)
+        pbox.append(signin_note)
         pbox.append(Gtk.Separator())
 
         # Teams call optimization (beta): runs Teams call media on the local
@@ -875,9 +1023,18 @@ class AvdApp(Gtk.Application):
         if self._signin_dlg is not None:
             old, self._signin_dlg = self._signin_dlg, None
             old.destroy()
+        # Smart card sign-in happens in the user's browser: a CAC has to sign
+        # the TLS handshake, and the browser already does that reliably with
+        # the system PKCS#11 setup. See _browser_signin.
+        if self._signin_uses_browser():
+            self._browser_signin(session)
+            return
         verifier = _b64url(secrets.token_bytes(64))
         challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
         state = secrets.token_urlsafe(16)
+        # Sovereign clouds have their own Entra authority and AVD scope; this
+        # account's cloud decides both (see avd_feed_connect.clouds).
+        cloud = session.client.cloud
         # Always show the account picker (prompt=select_account). It is the
         # known-good flow: it bypasses Azure AD Seamless SSO — which needs a
         # Windows Kerberos ticket and, on Linux, hangs the webview forever on
@@ -888,13 +1045,13 @@ class AvdApp(Gtk.Application):
         # both of those bugs, so we don't.
         params = {
             "client_id": config.CLIENT_ID, "response_type": "code",
-            "redirect_uri": config.REDIRECT, "scope": config.SCOPE,
+            "redirect_uri": config.REDIRECT, "scope": cloud.scope,
             "code_challenge": challenge, "code_challenge_method": "S256",
             "state": state, "prompt": "select_account",
         }
         if session.client.upn:
             params["login_hint"] = session.client.upn   # preselect the known account in the picker
-        url = config.LOGIN + "/authorize?" + urllib.parse.urlencode(params)
+        url = session.client.oauth.login + "/authorize?" + urllib.parse.urlencode(params)
 
         # With the main window hidden in the tray (e.g. a tray-initiated
         # connect), show the sign-in on its own instead of surfacing the app:
@@ -909,7 +1066,7 @@ class AvdApp(Gtk.Application):
         # close-request + always destroying/rebuilding the dialog + DMABUF off),
         # so persistence is safe and is what actually reduces sign-in prompts.
         wv = WebKit.WebView(network_session=self._web_session(session))
-        self._apply_ua(wv)   # account sign-in → Default UA (issue #28)
+        self._prepare_webview(wv, session)   # account sign-in → Default UA (issue #28)
         dlg.set_child(wv)
         self._signin_dlg = dlg
         got_code = [False]
@@ -958,11 +1115,135 @@ class AvdApp(Gtk.Application):
         wv.load_uri(url)
         dlg.present()
 
-    def _exchange(self, code, verifier, session):
+    def _signin_uses_browser(self):
+        """True when sign-in should go to the user's browser.
+
+        Opt-in: the in-app window is the nicer flow where it works. The
+        browser is required where the organization mandates a sign-in method
+        the embedded view cannot complete — a CAC/PIV smart card being the
+        case this exists for, since the browser owns the card and its PIN and
+        this app never sees either.
+        """
+        return bool(self._settings.get("_browser_signin"))
+
+    def _open_uri(self, uri):
+        """Open ``uri`` in the user's browser (portal-aware under Flatpak)."""
         try:
-            st, tok = http.post(config.LOGIN + "/token", {
+            Gtk.UriLauncher.new(uri).launch(self.win, None, None, None)
+            return True
+        except Exception:
+            pass
+        try:
+            return Gio.AppInfo.launch_default_for_uri(uri, None)
+        except GLib.Error:
+            return False
+
+    def _paste_redirect_dialog(self, title, on_url, retry_uri=None):
+        """Ask the user for the URL the browser ended up on.
+
+        The only redirect URI registered for the public client is Microsoft's
+        ``nativeclient`` page, so an external browser lands on a blank
+        Microsoft page carrying ``?code=...`` that this app cannot read. One
+        copy-paste closes the loop. A loopback port would avoid the paste, but
+        this client has no loopback redirect registered and Entra rejects one
+        with AADSTS50011.
+        """
+        parent = self.win if self.win and self.win.get_visible() else None
+        dlg = create(Gtk.Window, title=title, transient_for=parent,
+                     modal=parent is not None)
+        dlg.add_css_class("avd-settings")
+        dlg.set_default_size(560, -1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for margin in ("top", "bottom", "start", "end"):
+            getattr(box, f"set_margin_{margin}")(16)
+        box.append(create(Gtk.Label, xalign=0, wrap=True, label=tr(
+            "Sign in with your smart card in the browser window that just "
+            "opened. You will end on a blank Microsoft page \u2014 copy its "
+            "whole address from the address bar and paste it below.")))
+        entry = Gtk.Entry(placeholder_text=config.REDIRECT + "?code=\u2026")
+        entry.set_activates_default(True)
+        box.append(entry)
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons.set_halign(Gtk.Align.END)
+        if retry_uri:
+            again = create(Gtk.Button, label=tr("Open the browser again"))
+            again.add_css_class("flat")
+            again.connect("clicked", lambda *_: self._open_uri(retry_uri))
+            buttons.append(again)
+        cancel = create(Gtk.Button, label=tr("Cancel"))
+        submit = create(Gtk.Button, label=tr("Sign in"))
+        submit.add_css_class("suggested-action")
+        buttons.append(cancel)
+        buttons.append(submit)
+        box.append(buttons)
+        dlg.set_child(box)
+        done = {"handled": False}
+
+        def finish(text):
+            if done["handled"]:
+                return
+            done["handled"] = True
+            dlg.destroy()
+            on_url(text)
+
+        submit.connect("clicked", lambda *_: finish(entry.get_text().strip()))
+        entry.connect("activate", lambda *_: finish(entry.get_text().strip()))
+        cancel.connect("clicked", lambda *_: finish(None))
+        dlg.connect("close-request", lambda w: (finish(None), False)[1])
+        self._signin_dlg = dlg
+        dlg.present()
+        entry.grab_focus()
+        return dlg
+
+    def _browser_signin(self, session):
+        """Sign in via the user's browser, which owns the smart card.
+
+        Nothing here touches the card or the PIN. PKCE and the ``state`` check
+        are kept exactly as in the in-app flow; only the window the user types
+        into changes.
+        """
+        verifier = _b64url(secrets.token_bytes(64))
+        challenge = _b64url(hashlib.sha256(verifier.encode()).digest())
+        state = secrets.token_urlsafe(16)
+        cloud = session.client.cloud
+        params = {
+            "client_id": config.CLIENT_ID, "response_type": "code",
+            "redirect_uri": config.REDIRECT, "scope": cloud.scope,
+            "code_challenge": challenge, "code_challenge_method": "S256",
+            "state": state, "prompt": "select_account",
+        }
+        if session.client.upn:
+            params["login_hint"] = session.client.upn
+        url = session.client.oauth.login + "/authorize?" + urllib.parse.urlencode(params)
+
+        def got_url(text):
+            if not text:
+                session.pending_launch = None
+                self._discard_add(session)
+                return
+            code, error = _code_from_redirect(text, state)
+            if error:
+                session.pending_launch = None
+                self._discard_add(session)
+                self._error(error)
+                return
+            self._show("busy", session)
+            threading.Thread(target=self._exchange,
+                             args=(code, verifier, session, config.REDIRECT),
+                             daemon=True).start()
+
+        self._paste_redirect_dialog(tr("Sign in"), got_url, retry_uri=url)
+        if not self._open_uri(url):
+            self._error(tr("Could not open your browser."))
+
+    def _exchange(self, code, verifier, session, redirect=None):
+        try:
+            st, tok = http.post(session.client.oauth.login + "/token", {
                 "grant_type": "authorization_code", "client_id": config.CLIENT_ID,
-                "code": code, "redirect_uri": config.REDIRECT, "scope": config.SCOPE,
+                # Must be byte-identical to the redirect_uri the code was
+                # issued for.
+                "code": code, "redirect_uri": redirect or config.REDIRECT,
+                "scope": session.client.cloud.scope,
                 "code_verifier": verifier})
             if st != 200:
                 raise ValueError(tok.get("error_description", tok.get("error", tr("Sign-in failed"))))
@@ -991,8 +1272,12 @@ class AvdApp(Gtk.Application):
                 target = existing or session
                 if not target.apply_token(tok):
                     raise ValueError(tr("Please use the selected work account."))
-                profile = self.registry.upsert(claims, target.id)
+                # Persist the cloud picked before sign-in, so the next launch
+                # talks to the right authority without having to infer it.
+                profile = self.registry.upsert(claims, target.id,
+                                               cloud=session.client.cloud.key)
                 target.profile = profile
+                target.client.cloud = session.client.cloud
                 if existing:
                     self._discard_add(session)
                 else:
@@ -1014,6 +1299,8 @@ class AvdApp(Gtk.Application):
         if session is None:
             return
         session.close()
+        # Signing out must not leave a card PIN behind in memory.
+        self._cac_pins.clear()
         if session.refresh_source:
             GLib.source_remove(session.refresh_source)
             session.refresh_source = 0
@@ -1326,7 +1613,7 @@ class AvdApp(Gtk.Application):
             data = None
             if token:
                 try:
-                    data = storage.bearer_bytes(url, token)
+                    data = storage.bearer_bytes(url, token, cloud=session.client.cloud)
                     with session.refresh_lock:
                         if session.removed:
                             return
@@ -1502,6 +1789,12 @@ class AvdApp(Gtk.Application):
             session.client.output_dir,
             f"session_{safe}_{hashlib.sha256(res['id'].encode()).hexdigest()[:16]}")
         argv = [config.SDL, path, "/gateway:type:arm", "/sec:nla" if nla else "/sec:aad"]
+        # Sovereign clouds: FreeRDP defaults to the commercial Entra authority
+        # and the commercial AVD scope whatever gateway the .rdp names, so tell
+        # it which cloud this account is in (no-op for commercial / NLA).
+        # FreeRDP's own redirect is left alone: it derives the nativeclient
+        # page, which is the only URI registered for this client.
+        argv += build_azure_args(session.client.cloud, security)
         if session.client.upn:
             argv.append(f"/u:{session.client.upn}")
         # RemoteApp (RAIL) tiles: the bundled SDL client can't render RAIL windows,
@@ -1705,7 +1998,13 @@ class AvdApp(Gtk.Application):
             self._set_connecting(res["id"], res["title"], False, session, attempt=attempt)  # desktop is up
         if line.startswith("Browse to: "):
             url = line[len("Browse to: "):].strip()
-            if config.is_aad_login_url(url):
+            if config.is_aad_login_url(url, session.client.cloud) \
+                    and self._signin_uses_browser():
+                # The embedded view cannot complete a smart card sign-in, so
+                # hand this prompt to the browser too.
+                GLib.idle_add(self._resolve_aad_in_browser,
+                              master, url, res, session, attempt)
+            elif config.is_aad_login_url(url, session.client.cloud):
                 # Resolve on the main thread (WebKit must run there).
                 GLib.idle_add(self._resolve_aad, master, url, res, session, attempt)
             else:
@@ -1716,6 +2015,54 @@ class AvdApp(Gtk.Application):
                     os.write(master, b"\n")
                 except OSError:
                     pass
+
+    def _resolve_aad_in_browser(self, master, url, res, session, attempt=None):
+        """Resolve one connection's Entra prompt in the user's browser.
+
+        FreeRDP is blocked on stdin waiting for the redirect URL, and its own
+        redirect is Microsoft's nativeclient page — the only one registered for
+        this client — so the address comes back by paste, exactly as with
+        sign-in. Nothing here touches the card.
+        """
+        if session.removed or (attempt is not None and not attempt.active()):
+            if attempt is not None and not attempt.cancelled.is_set():
+                attempt.cancel()
+            else:
+                try:
+                    os.write(master, b"\n")
+                except OSError:
+                    pass
+            return False
+
+        def got_url(text):
+            if text and not session.removed and (attempt is None or attempt.active()):
+                # FreeRDP parses the code out of the whole URL itself.
+                try:
+                    os.write(master, (text + "\n").encode())
+                except OSError:
+                    pass
+                return
+            # Cancelled: unblock FreeRDP so it aborts rather than hanging.
+            if attempt is not None and not attempt.cancelled.is_set():
+                child = self._child_for(res["id"], session)
+                if child:
+                    self._cancel_connection(child, res, session, attempt)
+                else:
+                    attempt.cancel()
+            else:
+                try:
+                    os.write(master, b"\n")
+                except OSError:
+                    pass
+
+        dlg = self._paste_redirect_dialog(
+            tr("Sign in — {resource}").format(resource=res['title']),
+            got_url, retry_uri=url)
+        if attempt is not None:
+            attempt.close_auth = lambda *_: (dlg.destroy(), True)[1]
+        if not self._open_uri(url):
+            self._set_status(tr("Could not open your browser."), session, attempt=attempt)
+        return False
 
     def _resolve_aad(self, master, url, res, session, attempt=None):
         """Resolve one connection's AAD prompt; closing it cancels its attempt."""
@@ -1733,7 +2080,7 @@ class AvdApp(Gtk.Application):
                     pass
             return False
         wv = WebKit.WebView(network_session=self._web_session(session))
-        self._apply_ua(wv)
+        self._prepare_webview(wv, session)
         win = create(Gtk.Window, title=tr("Sign in — {resource}").format(resource=res['title']), transient_for=self.win)
         win.set_default_size(520, 640)
         win.set_child(wv)
@@ -1874,6 +2221,11 @@ class AvdApp(Gtk.Application):
             self._settings.pop(key, None)
         storage.save_settings(self._settings)
 
+    def _set_setting(self, key, value):
+        """Persist a non-boolean global setting (see _set_flag for toggles)."""
+        self._settings[key] = value
+        storage.save_settings(self._settings)
+
     def _teams_plugin_available(self):
         """True when the FreeRDP in use carries the freerdp-teams-redir add-in
         (libteams-redir-client.so in its lib/freerdp3). The add-in is not
@@ -1980,6 +2332,107 @@ class AvdApp(Gtk.Application):
                 wv.get_settings().set_user_agent(ua)
             except Exception:
                 pass
+
+    def _prepare_webview(self, wv, session):
+        """Common setup for every Microsoft sign-in webview.
+
+        Both the launcher's sign-in dialog and the connection-time AAD
+        resolver go through here so the two cannot drift apart.
+        """
+        self._apply_ua(wv)
+        if self._settings.get("_cac"):
+            wv.connect("authenticate", self._on_authenticate, session)
+
+    def _on_authenticate(self, wv, request, session):
+        """Answer Entra's certificate-based-auth challenge with the user's CAC.
+
+        Returning False lets WebKit continue with no certificate, which makes
+        Entra fall back to password/MFA — the right behaviour when there is no
+        card, so a missing CAC never blocks sign-in.
+        """
+        scheme = request.get_scheme()
+        if scheme == WebKit.AuthenticationScheme.CLIENT_CERTIFICATE_REQUESTED:
+            card = smartcard.preferred()
+            if card is None:
+                self._set_status(
+                    tr("No smart card detected — signing in without one."), session)
+                return False
+            certificate = smartcard.load_certificate(card, self._cac_pins.get(card.token))
+            if certificate is None:
+                self._set_status(
+                    tr("Could not read the certificate on your smart card."), session)
+                return False
+            request.authenticate(WebKit.Credential.new_for_certificate(
+                certificate, WebKit.CredentialPersistence.FOR_SESSION))
+            return True
+        if scheme == WebKit.AuthenticationScheme.CLIENT_CERTIFICATE_PIN_REQUESTED:
+            return self._ask_cac_pin(request, session)
+        return False
+
+    def _ask_cac_pin(self, request, session):
+        """Prompt for the card PIN and hand it back to WebKit.
+
+        The PIN is kept in memory for the life of the process only — never in
+        settings.json, never in the keyring, never logged, and never written to
+        the PTY that the session log records.
+        """
+        card = smartcard.preferred()
+        token = card.token if card else ""
+        flags = request.get_certificate_pin_flags()
+        # A retry means the PIN we had was wrong. Drop it and ask again rather
+        # than re-sending it: a CAC locks after a few failures.
+        if flags & Gio.TlsPasswordFlags.RETRY:
+            self._cac_pins.pop(token, None)
+        elif self._cac_pins.get(token):
+            request.authenticate(WebKit.Credential.new_for_certificate_pin(
+                self._cac_pins[token], WebKit.CredentialPersistence.FOR_SESSION))
+            return True
+
+        # Keep the request alive across the dialog; Python would otherwise drop
+        # the last reference and WebKit would wait forever.
+        self._pending_auth = request
+        parent = self._signin_dlg or self.win
+        dlg = create(Gtk.Window, title=tr("Smart card PIN"),
+                     transient_for=parent, modal=parent is not None)
+        dlg.set_default_size(380, 170)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for setter in ("set_margin_top", "set_margin_bottom",
+                       "set_margin_start", "set_margin_end"):
+            getattr(box, setter)(18)
+        message = tr("Enter the PIN for {card}").format(
+            card=card.label if card else tr("your smart card"))
+        if flags & Gio.TlsPasswordFlags.FINAL_TRY:
+            message += "\n" + tr("This is the last attempt before the card locks.")
+        elif flags & Gio.TlsPasswordFlags.RETRY:
+            message += "\n" + tr("That PIN was not accepted.")
+        box.append(create(Gtk.Label, label=message, wrap=True))
+        entry = Gtk.Entry(visibility=False, input_purpose=Gtk.InputPurpose.PASSWORD)
+        entry.set_activates_default(True)
+        box.append(entry)
+        button = create(Gtk.Button, label=tr("Unlock"))
+        box.append(button)
+        dlg.set_child(box)
+        answered = {"done": False}
+
+        def finish(pin):
+            if answered["done"]:
+                return
+            answered["done"] = True
+            self._pending_auth = None
+            dlg.destroy()
+            if pin:
+                self._cac_pins[token] = pin
+                request.authenticate(WebKit.Credential.new_for_certificate_pin(
+                    pin, WebKit.CredentialPersistence.FOR_SESSION))
+            else:
+                request.cancel()
+
+        entry.connect("activate", lambda *_a: finish(entry.get_text()))
+        button.connect("clicked", lambda *_a: finish(entry.get_text()))
+        dlg.connect("close-request", lambda w: (finish(None), False)[1])
+        dlg.present()
+        entry.grab_focus()
+        return True
 
     def _eff_extra(self, res, session):
         parts = [self._settings.get("_default", {}).get("extra_args", ""),

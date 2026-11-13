@@ -9,12 +9,12 @@ from .. import config, http
 from ..i18n import _ as tr
 
 
-def download_rdp(token, res, output_dir=None):
+def download_rdp(token, res, output_dir=None, cloud=None):
     """Fetch resource ``res``'s .rdp text and write it under the feed data dir,
     returning the path. ``res`` is a resource dict from the feed."""
     if not res["rdp_url"]:
         sys.exit(tr("Resource {resource} has no ResourceFile URL").format(resource=repr(res["title"])))
-    st, _, rdp = http.get(res["rdp_url"], token)
+    st, _, rdp = http.get(res["rdp_url"], token, cloud=cloud)
     if st != 200:
         sys.exit(tr("RDP download failed ({status}): {details}").format(status=st, details=rdp[:300]))
     directory = output_dir or config.OUT

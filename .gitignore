@@ -10,3 +10,4 @@ avd_feed_connect.flatpak
 avd_feed_connect.flatpakref
 site/
 pubkey.b64
+local.yml

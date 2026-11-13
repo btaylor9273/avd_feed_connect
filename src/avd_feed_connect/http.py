@@ -13,9 +13,13 @@ from .i18n import _ as tr
 from . import config
 
 
-def check_trusted(url):
-    """Refuse to attach a bearer token to a non-Microsoft or non-https URL."""
-    if not config.is_trusted_url(url):
+def check_trusted(url, cloud=None):
+    """Refuse to attach a bearer token to a non-Microsoft or non-https URL.
+
+    ``cloud`` scopes the check to one account's cloud; omitted, the
+    process-wide default cloud is used (see :mod:`avd_feed_connect.config`).
+    """
+    if not config.is_trusted_url(url, cloud):
         host = urllib.parse.urlparse(url).hostname
         raise ValueError(tr("Refusing to send token to untrusted URL (host: {host})").format(host=host))
 
@@ -36,13 +40,13 @@ def post(url, data):
         return e.code, json.loads(e.read().decode())
 
 
-def get(url, token, accept="*/*"):
+def get(url, token, accept="*/*", cloud=None):
     """GET ``url`` with a bearer ``token`` and the approved MS user-agent.
 
     Returns ``(status, headers_dict, body_text)``; HTTP errors return the error
     response rather than raising.
     """
-    check_trusted(url)
+    check_trusted(url, cloud)
     req = urllib.request.Request(url)
     req.add_header("Authorization", "Bearer " + token)
     req.add_header("Accept", accept)

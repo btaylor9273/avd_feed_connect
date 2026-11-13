@@ -34,7 +34,7 @@ jobs:
       - name: Pin app module to this commit
         run: |
           set -eu
-          m=io.github.shakeelosmani.avd_feed_connect.yml
+          m=io.github.btaylor9273.avd_feed_connect.yml
           awk -v sha="$GITHUB_SHA" '
             /avd_feed_connect\.git/ { print; getline; sub(/commit:.*/, "commit: " sha); print; next }
             { print }
@@ -45,7 +45,7 @@ jobs:
       - name: Build (signed)
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          manifest-path: io.github.shakeelosmani.avd_feed_connect.yml
+          manifest-path: io.github.btaylor9273.avd_feed_connect.yml
           cache-key: flatpak-builder-${{ github.sha }}
           gpg-sign: ${{ secrets.FLATPAK_GPG_KEYID }}
 
@@ -59,10 +59,10 @@ jobs:
           set -eu
           gpg --export "${{ secrets.FLATPAK_GPG_KEYID }}" > pubkey.gpg
           flatpak build-bundle \
-            --repo-url=https://shakeelosmani.github.io/avd_feed_connect/repo \
+            --repo-url=https://btaylor9273.github.io/avd_feed_connect/repo \
             --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo \
             --gpg-keys=pubkey.gpg \
-            repo avd_feed_connect.flatpak io.github.shakeelosmani.avd_feed_connect master
+            repo avd_feed_connect.flatpak io.github.btaylor9273.avd_feed_connect master
 
       - name: Assemble GitHub Pages site (repo + flatpakref)
         run: |
@@ -72,9 +72,9 @@ jobs:
           touch site/.nojekyll
           cat > site/avd_feed_connect.flatpakref <<EOF
           [Flatpak Ref]
-          Name=io.github.shakeelosmani.avd_feed_connect
+          Name=io.github.btaylor9273.avd_feed_connect
           Branch=master
-          Url=https://shakeelosmani.github.io/avd_feed_connect/repo
+          Url=https://btaylor9273.github.io/avd_feed_connect/repo
           Title=AVD Feed + Connect (Linux)
           IsRuntime=false
           GPGKey=$(cat pubkey.b64)
@@ -86,7 +86,7 @@ jobs:
           <h1>AVD Feed + Connect (Linux)</h1>
           <p>Install (double-click):
           <a href="avd_feed_connect.flatpakref">avd_feed_connect.flatpakref</a></p>
-          <p><a href="https://github.com/shakeelosmani/avd_feed_connect">Source &amp; releases</a></p>
+          <p><a href="https://github.com/btaylor9273/avd_feed_connect">Source &amp; releases</a></p>
           EOF
 
       - name: Deploy to GitHub Pages
@@ -108,8 +108,8 @@ jobs:
             ## Install
 
             **One click:** open
-            [avd_feed_connect.flatpakref](https://shakeelosmani.github.io/avd_feed_connect/avd_feed_connect.flatpakref)
-            — or `flatpak install --user https://shakeelosmani.github.io/avd_feed_connect/avd_feed_connect.flatpakref`
+            [avd_feed_connect.flatpakref](https://btaylor9273.github.io/avd_feed_connect/avd_feed_connect.flatpakref)
+            — or `flatpak install --user https://btaylor9273.github.io/avd_feed_connect/avd_feed_connect.flatpakref`
 
             **Or** download `avd_feed_connect.flatpak` below and
             `flatpak install --user avd_feed_connect.flatpak`.

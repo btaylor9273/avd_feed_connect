@@ -121,9 +121,9 @@ def load_ws_cache(directory=None):
         return [], ""
 
 
-def bearer_bytes(url, token):
+def bearer_bytes(url, token, cloud=None):
     """Binary GET with the approved UA headers (for icons; http.get decodes text)."""
-    http.check_trusted(url)
+    http.check_trusted(url, cloud)
     req = urllib.request.Request(url)
     req.add_header("Authorization", "Bearer " + token)
     req.add_header("Accept", "*/*")

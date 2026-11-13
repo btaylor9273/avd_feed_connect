@@ -13,6 +13,9 @@ class SecurityDecision:
     reason: str
     options: list[str]
     fingerprint: str
+    # The feed's aadtenantid, needed for FreeRDP's /azure:tenantid: override in
+    # sovereign clouds. Empty when the .rdp does not carry one.
+    aad_tenant_id: str = ''
 
 
 def resolve_security(path, setting=None, extra='', remembered=None):
@@ -25,6 +28,8 @@ def resolve_security(path, setting=None, extra='', remembered=None):
     relevant = {key: properties.get(key) for key in (
         'full address', 'aadtenantid', 'enablerdsaadauth', 'targetisaadjoined')}
     fingerprint = hashlib.sha256(json.dumps(relevant, sort_keys=True).encode()).hexdigest()
+    tenant_property = properties.get('aadtenantid')
+    tenant_id = tenant_property[1] if tenant_property else ''
     options, advanced = [], None
     for option in shlex.split(extra):
         if option.lower().startswith('/sec:'):
@@ -42,13 +47,14 @@ def resolve_security(path, setting=None, extra='', remembered=None):
                           (setting, 'connection setting'),
                           (advanced, 'advanced flags')):
         if value in ('aad', 'nla'):
-            return SecurityDecision(value, reason, options, fingerprint)
+            return SecurityDecision(value, reason, options, fingerprint, tenant_id)
     explicit = properties.get('enablerdsaadauth')
     if explicit is not None:
         mode = 'aad' if explicit == ('i', '1') else 'nla'
-        return SecurityDecision(mode, 'feed enablerdsaadauth', options, fingerprint)
+        return SecurityDecision(mode, 'feed enablerdsaadauth', options, fingerprint, tenant_id)
     if (isinstance(remembered, dict) and remembered.get('fingerprint') == fingerprint
             and remembered.get('mode') in ('aad', 'nla')):
-        return SecurityDecision(remembered['mode'], 'previous successful connection', options, fingerprint)
+        return SecurityDecision(remembered['mode'], 'previous successful connection', options,
+                                fingerprint, tenant_id)
     return SecurityDecision('nla', 'no explicit Entra SSO flag; select Entra to test if supported',
-                            options, fingerprint)
+                            options, fingerprint, tenant_id)

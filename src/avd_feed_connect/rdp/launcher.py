@@ -129,10 +129,24 @@ def apply_client_hotkeys(mode, path=None):
     return True
 
 
-def build_argv(sdl, path, upn):
+def build_azure_args(cloud, decision):
+    """FreeRDP's sovereign-cloud overrides for an Entra (``/sec:aad``) connect.
+
+    Empty for the commercial cloud and for NLA, where FreeRDP's defaults are
+    already right. See :meth:`avd_feed_connect.clouds.Cloud.freerdp_azure_option`
+    for why this is needed at all.
+    """
+    if cloud is None or decision.mode != "aad":
+        return []
+    option = cloud.freerdp_azure_option(decision.aad_tenant_id)
+    return [option] if option else []
+
+
+def build_argv(sdl, path, upn, cloud=None):
     """Assemble the sdl-freerdp command line for a full-screen CLI connection."""
     decision = resolve_security(path)
     argv = [sdl, path, "/gateway:type:arm", f"/sec:{decision.mode}"]
+    argv += build_azure_args(cloud or config.CLOUD, decision)
     if decision.mode == "nla":
         argv.append("/d:")
     if upn:
@@ -149,9 +163,10 @@ def build_argv(sdl, path, upn):
 class RdpLauncher:
     """Runs sdl-freerdp for a .rdp file (command-line, blocking)."""
 
-    def __init__(self, sdl=None, sdl_libs=None):
+    def __init__(self, sdl=None, sdl_libs=None, cloud=None):
         self.sdl = sdl or config.SDL
         self.sdl_libs = config.SDL_LIBS if sdl_libs is None else sdl_libs
+        self.cloud = cloud
 
     def launch(self, path, upn=""):
         env = dict(os.environ)
@@ -162,7 +177,7 @@ class RdpLauncher:
                 os.pathsep + env["LD_LIBRARY_PATH"] if env.get("LD_LIBRARY_PATH") else "")
         os.makedirs(config.OUT, exist_ok=True)
         log = session_log_path(config.OUT, "feed")
-        argv = build_argv(self.sdl, path, upn)
+        argv = build_argv(self.sdl, path, upn, cloud=self.cloud)
         print("launching:", " ".join(argv))
         print("log:", log)
         with open(log, "x") as lf:
