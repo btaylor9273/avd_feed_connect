@@ -237,6 +237,33 @@ with no extra steps. To build with no network at all, see
 `docs/OFFLINE-BUILD.md`, which also covers producing a single `.flatpak` bundle
 to hand to someone else.
 
+### If it does not appear in your application menu
+
+The build installs a desktop entry and icons, and Flatpak exports them to
+`~/.local/share/flatpak/exports/share`. Your desktop only finds them if that
+path is in `XDG_DATA_DIRS`. Flatpak adds it from `/etc/profile.d/flatpak.sh`,
+but a session that was already running when Flatpak was installed never picks
+it up — the app then only starts from a terminal.
+
+Check:
+
+```bash
+echo "$XDG_DATA_DIRS" | tr ':' '\n' | grep flatpak
+```
+
+If that prints nothing, **log out and back in**. If it still prints nothing
+(some sessions do not read `profile.d`), make it permanent for the systemd user
+session:
+
+```bash
+mkdir -p ~/.config/environment.d
+cat > ~/.config/environment.d/10-flatpak.conf <<'CONF'
+XDG_DATA_DIRS=${HOME}/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:${XDG_DATA_DIRS}
+CONF
+```
+
+then log out and back in.
+
 ### What you need on the machine
 
 * A **smart card reader** with `pcscd` running on the host — the app bundles
