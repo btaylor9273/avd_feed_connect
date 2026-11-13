@@ -612,7 +612,7 @@ class AvdApp(Gtk.Application):
         pbox.append(signh)
         card_ok = smartcard.available()
         cac_cb = create(Gtk.CheckButton, label=tr("Use my smart card in this app"))
-        cac_cb.set_active(bool(self._settings.get("_cac")))
+        cac_cb.set_active(self._cac_enabled())
         cac_cb.set_sensitive(card_ok)
         if not card_ok:
             bind(cac_cb, 'tooltip_text', tr("No smart card reader detected"))
@@ -622,7 +622,9 @@ class AvdApp(Gtk.Application):
         # They are alternatives: the browser cannot hand the code back without
         # a paste, so it is only worth using when the in-app card path fails.
         def _on_cac(btn):
-            self._set_flag("_cac", btn.get_active())
+            # Stored explicitly as on/off: absent means "automatic", which
+            # follows whether a card is present.
+            self._set_setting("_cac", "on" if btn.get_active() else "off")
             if btn.get_active() and browser_cb.get_active():
                 browser_cb.set_active(False)
 
@@ -2340,8 +2342,22 @@ class AvdApp(Gtk.Application):
         resolver go through here so the two cannot drift apart.
         """
         self._apply_ua(wv)
-        if self._settings.get("_cac"):
+        if self._cac_enabled():
             wv.connect("authenticate", self._on_authenticate, session)
+
+    def _cac_enabled(self):
+        """Whether to answer a certificate challenge with the user's card.
+
+        Defaults to ON whenever a card is readable, because an organization
+        that issues smart cards generally requires them, and a first run on a
+        fresh profile would otherwise present a sign-in page that cannot
+        complete. Explicitly turning it off in Settings is remembered; with no
+        card the handler is never attached, so nothing changes for anyone else.
+        """
+        setting = self._settings.get("_cac")
+        if setting in ("on", "off"):
+            return setting == "on"
+        return smartcard.available()
 
     def _on_authenticate(self, wv, request, session):
         """Answer Entra's certificate-based-auth challenge with the user's CAC.

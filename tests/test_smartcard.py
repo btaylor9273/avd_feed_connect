@@ -310,3 +310,28 @@ def test_p11tool_is_called_with_the_module_provider(monkeypatch):
     assert p11tool, "p11tool was never invoked"
     assert "--provider" in p11tool[0]
     assert MODULE_PATH in p11tool[0]
+
+
+# -- the default must work on a fresh profile -------------------------------
+
+def test_cac_defaults_on_when_a_card_is_present(monkeypatch):
+    """A fresh profile has no _cac setting. Defaulting it off presents a
+    sign-in page that a smart-card-only tenant cannot complete."""
+    import avd_feed_gui as gui
+    fake_tools(monkeypatch)
+
+    app = gui.AvdApp.__new__(gui.AvdApp)      # no GTK init needed
+    app._settings = {}
+    assert app._cac_enabled() is True
+    app._settings = {"_cac": "off"}
+    assert app._cac_enabled() is False
+    app._settings = {"_cac": "on"}
+    assert app._cac_enabled() is True
+
+
+def test_cac_defaults_off_without_a_card(monkeypatch):
+    import avd_feed_gui as gui
+    monkeypatch.setattr(smartcard, "_run", lambda argv: "")
+    app = gui.AvdApp.__new__(gui.AvdApp)
+    app._settings = {}
+    assert app._cac_enabled() is False
