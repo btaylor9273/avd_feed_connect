@@ -9,7 +9,7 @@ import pytest
 from avd_feed_connect.auth import smartcard
 
 TOKEN = ("pkcs11:model=PKCS%2315%20emulated;manufacturer=piv_II;"
-         "serial=c9a39982201093eb;token=EXAMPLE.USER.1234567890")
+         "serial=0123456789abcdef;token=EXAMPLE.USER.1234567890")
 
 # Real `p11tool --list-all-certs --only-urls` output for a DoD CAC (name changed).
 P11TOOL_CERTS = "\n".join(

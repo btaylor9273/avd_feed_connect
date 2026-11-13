@@ -155,7 +155,7 @@ def test_commercial_needs_no_freerdp_override():
     assert clouds.DEFAULT.freerdp_azure_option("some-tenant") is None
 
 
-GUID = "fae6d70f-954b-4811-92b6-0530d6f84c43"
+GUID = "00000000-1111-2222-3333-444444444444"
 
 
 def test_usgov_freerdp_option():

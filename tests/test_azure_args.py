@@ -10,7 +10,7 @@ from avd_feed_connect import clouds
 from avd_feed_connect.rdp.launcher import build_argv, build_azure_args
 from avd_feed_connect.rdp.security import resolve_security
 
-TENANT = "fae6d70f-954b-4811-92b6-0530d6f84c43"
+TENANT = "00000000-1111-2222-3333-444444444444"
 
 # Trimmed from a real US Army Azure Government feed .rdp.
 GOV_RDP = f"""full address:s:rdgateway-r1.wvd.azure.us
@@ -111,12 +111,12 @@ def test_the_azure_option_is_a_single_argv_element(tmp_path):
 
 def test_cli_argv_for_a_gov_desktop(tmp_path):
     argv = build_argv("/app/bin/sdl-freerdp", write(tmp_path, GOV_RDP),
-                      "user@army.mil", cloud=clouds.CLOUDS["usgov"])
+                      "user@example.mil", cloud=clouds.CLOUDS["usgov"])
     assert argv[0] == "/app/bin/sdl-freerdp"
     assert "/sec:aad" in argv
     assert "/gateway:type:arm" in argv
     assert any(a.startswith("/azure:") for a in argv)
-    assert "/u:user@army.mil" in argv
+    assert "/u:user@example.mil" in argv
 
 
 def test_cli_argv_for_a_commercial_desktop(tmp_path):
@@ -140,7 +140,7 @@ def test_cli_argv_still_works_positionally(tmp_path):
     "x,avd-access:http://evil.io",    # would redirect the authorization code
     "x,ad:login.evil.io",             # would move the authority
     "a,b",
-    "fae6d70f-954b-4811-92b6-0530d6f84c43,auth-helper:/bin/sh",
+    "00000000-1111-2222-3333-444444444444,auth-helper:/bin/sh",
     "../../etc/passwd",
     "x y", "x\ny", "x\"y", "x;y", "x'y",
     "not-a-guid", "", "   ",
