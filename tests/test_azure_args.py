@@ -180,3 +180,33 @@ def test_a_real_guid_tenant_id_is_used(tmp_path):
 def test_guid_forms_are_accepted(guid):
     option = clouds.CLOUDS["usgov"].freerdp_azure_option(guid)
     assert f"tenantid:{guid}" in option
+
+
+# -- in-session card redirection -------------------------------------------
+
+def test_reads_the_feeds_smartcard_request(tmp_path):
+    from avd_feed_connect.rdp.resources import rdp_redirects_smartcards
+    assert rdp_redirects_smartcards(write(tmp_path, GOV_RDP)) is True
+    assert rdp_redirects_smartcards(write(tmp_path, COMMERCIAL_RDP, "c.rdp")) is False
+    assert rdp_redirects_smartcards(str(tmp_path / "absent.rdp")) is False
+
+
+def test_cli_redirects_the_card_when_the_feed_asks(tmp_path):
+    argv = build_argv("sdl-freerdp", write(tmp_path, GOV_RDP), "user@example.mil",
+                      cloud=clouds.CLOUDS["usgov"])
+    assert "/smartcard" in argv
+    # Never the logon variant: that is Kerberos to the host and needs /sec:nla.
+    assert not any(a.startswith("/smartcard-logon") for a in argv)
+
+
+def test_cli_leaves_the_card_alone_when_the_feed_does_not_ask(tmp_path):
+    argv = build_argv("sdl-freerdp", write(tmp_path, COMMERCIAL_RDP, "c.rdp"),
+                      "u@example.com", cloud=clouds.DEFAULT)
+    assert "/smartcard" not in argv
+
+
+@pytest.mark.parametrize("forced,expected", [(True, True), (False, False)])
+def test_cli_smartcard_can_be_forced_either_way(tmp_path, forced, expected):
+    argv = build_argv("sdl-freerdp", write(tmp_path, COMMERCIAL_RDP, "c.rdp"),
+                      "u@example.com", cloud=clouds.DEFAULT, smartcard=forced)
+    assert ("/smartcard" in argv) is expected

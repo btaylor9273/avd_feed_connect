@@ -184,6 +184,7 @@
   "your smart card": "tu tarjeta inteligente",
   "No smart card detected — signing in without one.": "No se detectó ninguna tarjeta inteligente; se iniciará sesión sin ella.",
   "Could not read the certificate on your smart card.": "No se pudo leer el certificado de tu tarjeta inteligente.",
-  "With a smart card, the app asks for your PIN when the card is used and keeps it only until you quit — it is never saved. The browser option needs you to paste one address back, so use it only if the card does not work in the app.": "Con una tarjeta inteligente, la aplicación pide tu PIN cuando se usa la tarjeta y lo conserva solo hasta que salgas; nunca se guarda. La opción del navegador requiere pegar una dirección, así que úsala solo si la tarjeta no funciona en la aplicación.",
-  "Connect (fullscreen)": "Conectar (pantalla completa)"
+  "Connect (fullscreen)": "Conectar (pantalla completa)",
+  "Use my smart card in the session": "Usar mi tarjeta inteligente en la sesión",
+  "With a smart card, the app asks for your PIN when the card is used and keeps it only until you quit — it is never saved. Using it in the session forwards your reader to the remote desktop, for CAC-signed mail and sites.": "Con una tarjeta inteligente, la aplicación pide tu PIN cuando se usa la tarjeta y lo conserva solo hasta que salgas; nunca se guarda. Usarla en la sesión reenvía tu lector al escritorio remoto, para correo y sitios firmados con CAC."
 }

@@ -140,11 +140,26 @@ PKCS#11 setup. The only redirect URI registered for this public client is a
 Microsoft page the app cannot read, so that path asks you to paste one address
 back; it is the fallback, not the default.
 
-**In-session card redirection is not implemented.** The card is used to sign
-*in*; it is not forwarded into the remote desktop, so CAC-signed email or
-`.mil` sites opened inside the session will not see it. The plumbing for it is
-present (pcsc-lite, OpenSC and `--socket=pcsc` are all bundled) — only
-FreeRDP's `/smartcard` flag and a setting are missing.
+### Using the card inside the session
+
+**Settings → Sign-in → Use my smart card in the session** forwards your reader
+to the remote desktop over FreeRDP's PC/SC channel, so CAC-signed mail and
+`.mil` sites work there. It follows the feed's own `redirectsmartcards`
+request unless you set it explicitly, and is independent of signing *in* with
+the card.
+
+This is plain `/smartcard` redirection, never `/smartcard-logon` — that one is
+Kerberos/PKINIT to the session host and requires `/sec:nla`, which conflicts
+with the Entra path AVD uses.
+
+Two things to know. The app also holds the card during sign-in, so both uses
+share one reader through `pcscd`; if a session stops seeing the card,
+reconnecting usually clears it. And upstream FreeRDP has open reports of
+`SCARD_E_SHARING_VIOLATION` with some CAC readers
+([FreeRDP#13457](https://github.com/FreeRDP/FreeRDP/issues/13457),
+[#12778](https://github.com/FreeRDP/FreeRDP/issues/12778)) — if the card
+prompt loops inside the session, that is the known upstream issue, not a
+configuration problem here. Turn the setting off to connect without it.
 
 Both paths need a reader the host can see:
 

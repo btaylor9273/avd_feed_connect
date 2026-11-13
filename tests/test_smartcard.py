@@ -335,3 +335,43 @@ def test_cac_defaults_off_without_a_card(monkeypatch):
     app = gui.AvdApp.__new__(gui.AvdApp)
     app._settings = {}
     assert app._cac_enabled() is False
+
+
+# -- in-session redirection decision ---------------------------------------
+
+def _rdp(tmp_path, body, name="x.rdp"):
+    path = tmp_path / name
+    path.write_text(body)
+    return str(path)
+
+
+def test_session_redirection_follows_the_feed(monkeypatch, tmp_path):
+    import avd_feed_gui as gui
+    fake_tools(monkeypatch)
+    monkeypatch.delenv("AVD_SMARTCARD", raising=False)
+    app = gui.AvdApp.__new__(gui.AvdApp)
+    app._settings = {}
+    assert app._smartcard_wanted(_rdp(tmp_path, "redirectsmartcards:i:1\n")) is True
+    assert app._smartcard_wanted(_rdp(tmp_path, "redirectsmartcards:i:0\n", "b.rdp")) is False
+
+
+def test_session_redirection_can_be_set_explicitly(monkeypatch, tmp_path):
+    import avd_feed_gui as gui
+    fake_tools(monkeypatch)
+    monkeypatch.delenv("AVD_SMARTCARD", raising=False)
+    app = gui.AvdApp.__new__(gui.AvdApp)
+    off = _rdp(tmp_path, "redirectsmartcards:i:0\n")
+    app._settings = {"_smartcard": "on"}
+    assert app._smartcard_wanted(off) is True
+    app._settings = {"_smartcard": "off"}
+    assert app._smartcard_wanted(_rdp(tmp_path, "redirectsmartcards:i:1\n", "c.rdp")) is False
+
+
+def test_session_redirection_needs_a_card(monkeypatch, tmp_path):
+    """No reader means nothing to forward, whatever the feed asks."""
+    import avd_feed_gui as gui
+    monkeypatch.setattr(smartcard, "_run", lambda argv: "")
+    monkeypatch.delenv("AVD_SMARTCARD", raising=False)
+    app = gui.AvdApp.__new__(gui.AvdApp)
+    app._settings = {}
+    assert app._smartcard_wanted(_rdp(tmp_path, "redirectsmartcards:i:1\n")) is False

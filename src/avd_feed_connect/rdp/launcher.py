@@ -15,7 +15,8 @@ from datetime import datetime, timezone
 
 from .. import config
 from .security import resolve_security
-from .resources import set_rdp_dynamic_resolution, set_rdp_multimon
+from .resources import (rdp_redirects_smartcards, set_rdp_dynamic_resolution,
+                        set_rdp_multimon)
 
 
 def session_log_path(output_dir, prefix):
@@ -153,11 +154,18 @@ def build_azure_args(cloud, decision):
     return [option] if option else []
 
 
-def build_argv(sdl, path, upn, cloud=None):
+def build_argv(sdl, path, upn, cloud=None, smartcard=None):
     """Assemble the sdl-freerdp command line for a full-screen CLI connection."""
     decision = resolve_security(path)
     argv = [sdl, path, "/gateway:type:arm", f"/sec:{decision.mode}"]
     argv += build_azure_args(cloud or config.CLOUD, decision)
+    if smartcard is None:
+        smartcard = rdp_redirects_smartcards(path)
+    if smartcard:
+        # Forwards the local reader over the PC/SC channel. NOT
+        # /smartcard-logon, which is Kerberos/PKINIT to the host and requires
+        # /sec:nla — it conflicts with the Entra path AVD uses.
+        argv.append("/smartcard")
     if decision.mode == "nla":
         argv.append("/d:")
     if upn:

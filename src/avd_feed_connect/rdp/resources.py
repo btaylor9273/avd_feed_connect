@@ -40,6 +40,24 @@ def set_rdp_dynamic_resolution(path):
         destination.write("\n".join(lines) + "\n")
 
 
+def rdp_redirects_smartcards(path):
+    """True when the feed asks for smartcard redirection (``redirectsmartcards:i:1``).
+
+    AVD host pools that expect a CAC/PIV card set this. Unlike most .rdp
+    properties FreeRDP does NOT act on it by itself — redirection has to be
+    turned on with ``/smartcard`` — so we read it and decide. Any I/O error is
+    treated as "not requested"."""
+    try:
+        with open(path) as f:
+            for line in f:
+                head, _, val = line.partition(":i:")
+                if head.strip().lower() == "redirectsmartcards":
+                    return val.strip() == "1"
+    except OSError:
+        pass
+    return False
+
+
 def rdp_is_remoteapp(path):
     """True when the feed .rdp is a RemoteApp (``remoteapplicationmode:i:1``).
 

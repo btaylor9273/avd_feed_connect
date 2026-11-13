@@ -81,7 +81,7 @@ from avd_feed_connect.rdp.launcher import (  # noqa: E402
     apply_client_hotkeys, build_azure_args, build_display_args, session_log_path,
     HOTKEY_MODIFIER_NAMES, HOTKEY_DEFAULTS, HOTKEY_ACTIONS, HOTKEY_KEYS)
 from avd_feed_connect.rdp.resources import (  # noqa: E402
-    rdp_is_remoteapp, set_rdp_desktop_mode)
+    rdp_is_remoteapp, rdp_redirects_smartcards, set_rdp_desktop_mode)
 from avd_feed_connect.i18n import _ as tr, ngettext, configure, LANGUAGES  # noqa: E402
 from avd_feed_connect.gui.localization import bind, create, strings  # noqa: E402
 from avd_feed_connect.gui.theme import CSS_BASE, PALETTE_DARK, PALETTE_LIGHT  # noqa: E402
@@ -635,12 +635,21 @@ class AvdApp(Gtk.Application):
 
         cac_cb.connect("toggled", _on_cac)
         browser_cb.connect("toggled", _on_browser)
-        pbox.append(cac_cb); pbox.append(browser_cb)
+        sc_cb = create(Gtk.CheckButton, label=tr("Use my smart card in the session"))
+        sc_cb.set_active(self._settings.get("_smartcard") != "off")
+        sc_cb.set_sensitive(card_ok)
+        if not card_ok:
+            bind(sc_cb, 'tooltip_text', tr("No smart card reader detected"))
+        # on/off stored explicitly; absent means automatic, which follows the
+        # feed's own redirectsmartcards request.
+        sc_cb.connect("toggled", lambda btn: self._set_setting(
+            "_smartcard", "on" if btn.get_active() else "off"))
+        pbox.append(cac_cb); pbox.append(browser_cb); pbox.append(sc_cb)
         signin_note = create(Gtk.Label, xalign=0, wrap=True, label=tr(
             "With a smart card, the app asks for your PIN when the card is "
-            "used and keeps it only until you quit \u2014 it is never saved. The "
-            "browser option needs you to paste one address back, so use it "
-            "only if the card does not work in the app."))
+            "used and keeps it only until you quit \u2014 it is never saved. "
+            "Using it in the session forwards your reader to the remote "
+            "desktop, for CAC-signed mail and sites."))
         signin_note.add_css_class("tile-sub")
         signin_note.set_margin_start(4)
         # Cap the natural width or this note stretches the popover (same as
@@ -1843,6 +1852,11 @@ class AvdApp(Gtk.Application):
                  "/prevent-session-lock:120"]
         if teams_redir:
             argv.append("/dvc:teams-redir")
+        if self._smartcard_wanted(path):
+            # Forwards the local reader into the session so CAC-signed mail and
+            # sites work there. Plain /smartcard, never /smartcard-logon: that
+            # one is Kerberos to the host and needs /sec:nla.
+            argv.append("/smartcard")
         mm = os.environ.get("AVD_MULTIMON", "").strip().lower()
         if mm in ("1", "on", "true", "yes"):
             want_multimon = True
@@ -2344,6 +2358,24 @@ class AvdApp(Gtk.Application):
         self._apply_ua(wv)
         if self._cac_enabled():
             wv.connect("authenticate", self._on_authenticate, session)
+
+    def _smartcard_wanted(self, path):
+        """Whether to forward the card into this session.
+
+        Env override, then the explicit setting, then "automatic" — which
+        follows the feed's own ``redirectsmartcards``. Host pools that expect
+        a CAC ask for it, so automatic is right for them and off everywhere
+        else. Independent of signing IN with the card.
+        """
+        override = os.environ.get("AVD_SMARTCARD", "").strip().lower()
+        if override in ("1", "on", "true", "yes"):
+            return True
+        if override in ("0", "off", "false", "no"):
+            return False
+        setting = self._settings.get("_smartcard")
+        if setting in ("on", "off"):
+            return setting == "on"
+        return smartcard.available() and rdp_redirects_smartcards(path)
 
     def _cac_enabled(self):
         """Whether to answer a certificate challenge with the user's card.
