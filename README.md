@@ -598,26 +598,42 @@ silent connect, and camera/mic/multi-monitor redirection. Feedback welcome.
 MIT for this app's code. Bundled components keep their own licenses — see
 `docs/DEPENDENCIES.md` for the full inventory with versions and pinned hashes.
 
-### Optional GNOME connection workspaces
+### Optional GNOME connection workspaces: switching between desktops
 
-On GNOME, in **Default settings**, enable **Start connection in a new virtual desktop** to
-place desktop connections in separate GNOME workspaces. A resource's settings
-can inherit the default, enable it, or disable it. Remote apps are unaffected.
-The app switches to the session's workspace after successful logon. The default
-is disabled; without the companion extension, connections open normally. The
-option is hidden on other desktops, and saved enabled preferences do not invoke
-GNOME integration there. Backend selection is separate from the preference and
-launch lifecycle so future desktop integrations can supply their own capabilities;
-this release implements only GNOME. No generic Wayland support is assumed.
+Put each desktop connection on its **own GNOME workspace**, so moving between
+your local desktop and the remote one is `Super + PageUp/PageDown` (or a
+three-finger swipe) rather than window switching. The app follows you to the
+session's workspace once logon completes.
 
-GNOME Wayland requires the small companion Shell extension in
-`gnome-extension/avd-workspaces@avd-feed-connect` (GNOME Shell 50). To install it
-manually from a source checkout, copy that directory into
-`~/.local/share/gnome-shell/extensions/`, log out and back in, then enable
-**AVD connection workspaces** in GNOME Extensions. Installation and enablement
-are explicit user actions; the app never performs either automatically.
-The Flatpak manifest includes permission for the extension's dedicated D-Bus
-name. Existing installations need a build containing that permission.
+This needs two things: the companion GNOME Shell extension, and the setting.
+
+```bash
+# 1. Install the extension from this checkout.
+cp -r gnome-extension/avd-workspaces@avd-feed-connect \
+      ~/.local/share/gnome-shell/extensions/
+
+# 2. Make GNOME Shell notice it.
+#    X11:     Alt+F2, type r, Enter  (your windows survive)
+#    Wayland: log out and back in
+# 3. Enable it.
+gnome-extensions enable avd-workspaces@avd-feed-connect
+gnome-extensions info avd-workspaces@avd-feed-connect | grep State   # -> ACTIVE
+```
+
+Then turn on **Default settings → Start connection in a new virtual desktop**.
+A resource's own settings can inherit that, enable it, or disable it. Remote
+apps are unaffected, and the default is off.
+
+The extension is required on GNOME generally, not only on Wayland: the app
+places windows by calling the extension over D-Bus, never through Shell `Eval`
+or X11 workspace hacks. Without it — or on another desktop — connections open
+normally and the option is hidden. Installing and enabling it are deliberate
+user actions; the app never does either by itself. The Flatpak manifest carries
+permission for the extension's dedicated D-Bus name.
+
+**If the app does not appear in GNOME Extensions**, check the `shell-version`
+list in `metadata.json` includes your GNOME Shell version (`gnome-shell
+--version`). GNOME silently ignores extensions that do not list it.
 
 Placement uses an exact random FreeRDP window title rather than resource names
 or sandbox PIDs. It waits briefly for the desktop window after logon, reuses an
