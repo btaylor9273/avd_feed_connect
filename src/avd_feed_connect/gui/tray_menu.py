@@ -35,7 +35,7 @@ def _resource_item(res, session):
         children = [item(_("Connecting…"), enabled=False)]
     else:
         children = [item(_("Connect"), ("connect", rid)),
-                    item(_("Connect (windowed)"), ("connect-windowed", rid))]
+                    item(_("Connect (fullscreen)"), ("connect-fullscreen", rid))]
     return item(MARKERS.get(state, "") + res["title"], children=children)
 
 

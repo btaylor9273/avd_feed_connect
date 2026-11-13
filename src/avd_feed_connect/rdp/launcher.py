@@ -27,7 +27,11 @@ def session_log_path(output_dir, prefix):
 def build_display_args(path, extra, want_multimon):
     """Resolve GUI display flags and conflicting settings in the feed file."""
     options = shlex.split(extra)
-    dynamic = False
+    # Dynamic resolution is the default: the remote desktop then tracks the
+    # window, which matches the local display instead of whatever fixed mode
+    # the feed happens to specify. "-dynamic-resolution" opts back into a
+    # fixed-size fullscreen session.
+    dynamic = True
     for option in options:
         if option in ("/dynamic-resolution", "+dynamic-resolution"):
             dynamic = True
@@ -44,6 +48,13 @@ def build_display_args(path, extra, want_multimon):
         options = [option for option in options
                    if option.lstrip("/+-").partition(":")[0]
                    not in ("smart-sizing", "f", "multimon")]
+        # Rewriting the .rdp only clears the properties that conflict with a
+        # resizable window; sending resolution updates is a FreeRDP command
+        # line flag. Without it the window resizes but the remote desktop
+        # does not follow.
+        if not any(option in ("/dynamic-resolution", "+dynamic-resolution")
+                   for option in options):
+            options.append("/dynamic-resolution")
 
     set_rdp_multimon(path, want_multimon)
     return ([] if dynamic else ["/f"]) + [

@@ -21,7 +21,7 @@ The connection itself is still sdl-freerdp with /gateway:type:arm /sec:aad, so
 camera/mic/gfx behave exactly as before.
 
 A tray icon (gui.tray, StatusNotifierItem over plain D-Bus — GTK4 has no tray
-API) lists every resource by workspace with Connect / Connect (windowed) /
+API) lists every resource by workspace with Connect / Connect (fullscreen) /
 Focus window / Disconnect. Opt-in (Settings menu), while a tray host is present:
 closing the window hides it to the tray, and the app can start hidden there.
 AVD_TRAY=0 turns the tray off.
@@ -1498,7 +1498,7 @@ class AvdApp(Gtk.Application):
         if pending:
             child = self._child_for(pending[0], session)
             if child:
-                self._on_tile_activated(self.grid, child, windowed=pending[1])
+                self._on_tile_activated(self.grid, child, fullscreen=pending[1])
         return False
 
     def _make_tile(self, res, session):
@@ -1646,7 +1646,7 @@ class AvdApp(Gtk.Application):
             GLib.idle_add(apply)
 
     # ---- launch + live connection state -----------------------------------
-    def _on_tile_activated(self, flowbox, child, windowed=False):
+    def _on_tile_activated(self, flowbox, child, fullscreen=False):
         session = child._account
         if session.removed:
             return
@@ -1664,7 +1664,7 @@ class AvdApp(Gtk.Application):
         self._set_tile_state(res["id"], "state-connecting", session, attempt=attempt)
         self._set_status(tr("Connecting to {resource}…").format(resource=res['title']), session, attempt=attempt)
         self._set_connecting(res["id"], res["title"], True, session, attempt=attempt)
-        threading.Thread(target=self._launch, args=(child, res, windowed, session, attempt),
+        threading.Thread(target=self._launch, args=(child, res, fullscreen, session, attempt),
                          daemon=True).start()
 
     def _cancel_visible_connections(self):
@@ -1696,7 +1696,7 @@ class AvdApp(Gtk.Application):
             return GLib.SOURCE_REMOVE
         clear()
 
-    def _launch(self, child, res, windowed, session, attempt=None):
+    def _launch(self, child, res, fullscreen, session, attempt=None):
         if attempt is None:
             attempt = ConnectionAttempt()
             child._attempt = attempt
@@ -1715,7 +1715,7 @@ class AvdApp(Gtk.Application):
             self._set_connecting(res["id"], res["title"], False, session, attempt=attempt)
             self._set_tile_state(res["id"], None, session, attempt=attempt)
             self._set_status(tr("Sign in to connect"), session, attempt=attempt)
-            session.pending_launch = (res["id"], windowed)   # connect automatically afterwards
+            session.pending_launch = (res["id"], fullscreen)   # connect automatically afterwards
             GLib.idle_add(lambda: self._interactive_signin(session) if attempt.active() else False)
             return
         try:
@@ -1814,10 +1814,10 @@ class AvdApp(Gtk.Application):
         # are opt-in via AVD_EXTRA_ARGS (e.g. "/multimon /gfx"), until a settings UI.
         # --- display config: env var > per-resource/default setting > auto ---
         extra = shlex.join(security.options)
-        if windowed:
-            # A resizable window instead of /f: build_display_args drops the
-            # fullscreen/smart-sizing/multimon flags and the feed's screen mode.
-            extra = (extra + " /dynamic-resolution").strip()
+        if fullscreen:
+            # Opt out of the default dynamic resolution: a fixed-size /f
+            # session using the feed's own screen mode.
+            extra = (extra + " -dynamic-resolution").strip()
         # AVD NLA host pools reject FreeRDP's default "AzureAD" domain — both
         # reporters on issue #3 connect only with the domain cleared. Send an
         # empty domain so the user just types their password (a rare pool that
@@ -2277,7 +2277,7 @@ class AvdApp(Gtk.Application):
             self.quit()
         elif kind == "refresh":
             self._reload_feed()
-        elif kind in ("connect", "connect-windowed"):
+        elif kind in ("connect", "connect-fullscreen"):
             if session is None or session.removed:
                 return
             ch = self._child_for(rid, session)
@@ -2287,7 +2287,7 @@ class AvdApp(Gtk.Application):
                     ch = self._make_tile(resource, session)
                     session.tiles[rid] = ch
             if ch:
-                self._on_tile_activated(self.grid, ch, windowed=kind == "connect-windowed")
+                self._on_tile_activated(self.grid, ch, fullscreen=kind == "connect-fullscreen")
         elif kind in ("focus", "disconnect"):
             ch = self._child_for(rid, session)
             proc = ch._proc if ch else None

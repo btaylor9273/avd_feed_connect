@@ -78,19 +78,30 @@ def test_dynamic_display_args_override_conflicting_modes(tmp_path):
 
 
 def test_non_dynamic_display_preserves_smart_sizing(tmp_path):
+    """Dynamic resolution is the default now, so a fixed-size session has to
+    opt out explicitly; smart sizing then survives untouched."""
     path = _rdp(tmp_path, "smart sizing:i:1\n")
-    args = build_display_args(path, "/smart-sizing", True)
-    assert args == ["/f", "/multimon", "/smart-sizing"]
+    args = build_display_args(path, "-dynamic-resolution /smart-sizing", True)
+    # The opt-out is passed through to FreeRDP as well, where it means the
+    # same thing.
+    assert args == ["/f", "/multimon", "-dynamic-resolution", "/smart-sizing"]
     assert "smart sizing:i:1" in open(path).read().splitlines()
 
 
 def test_dynamic_flag_must_be_an_enabled_option(tmp_path):
-    for extra in ("-dynamic-resolution", "/dynamic-resolution -dynamic-resolution",
-                  "/drive:dynamic-resolution,/tmp"):
+    """The flag is matched exactly, never as a substring of another option."""
+    for extra in ("-dynamic-resolution", "/dynamic-resolution -dynamic-resolution"):
         path = _rdp(tmp_path, "username:s:u\n")
         args = build_display_args(path, extra, False)
         assert args[0] == "/f"
         assert "smart sizing:i:0" not in open(path).read().splitlines()
+    # A drive share that merely CONTAINS the words must not be read as the
+    # flag either way: it neither enables nor disables dynamic resolution,
+    # so the default stands and the option is passed through untouched.
+    path = _rdp(tmp_path, "username:s:u\n")
+    args = build_display_args(path, "/drive:dynamic-resolution,/tmp", False)
+    assert "/f" not in args
+    assert "/drive:dynamic-resolution,/tmp" in args
 
 
 def test_explicit_single_monitor_updates_feed(tmp_path):
@@ -373,3 +384,35 @@ def test_rdp_download_is_checked_against_the_account_cloud(tmp_path, monkeypatch
     with pytest.raises(ValueError):
         resources.download_rdp('t', res, str(tmp_path / 'com'),
                                cloud=clouds.DEFAULT)
+
+
+def test_dynamic_resolution_is_the_default(tmp_path):
+    """The remote desktop should track the window out of the box, rather than
+    using whatever fixed mode the feed specifies."""
+    path = str(tmp_path / 'd.rdp')
+    open(path, 'w').write("screen mode id:i:2\nsmart sizing:i:1\n")
+    args = build_display_args(path, "", False)
+    assert "/f" not in args, args
+    assert "-multimon" in args
+
+
+def test_fullscreen_opts_out_of_dynamic_resolution(tmp_path):
+    """What the tray's Connect (fullscreen) passes."""
+    path = str(tmp_path / 'f.rdp')
+    open(path, 'w').write("screen mode id:i:2\nsmart sizing:i:1\n")
+    args = build_display_args(path, "-dynamic-resolution", False)
+    assert "/f" in args, args
+
+
+def test_dynamic_resolution_always_passes_the_freerdp_flag(tmp_path):
+    """Rewriting the .rdp only clears conflicting properties; the resolution
+    updates themselves come from the command line flag."""
+    path = str(tmp_path / 'g.rdp')
+    open(path, 'w').write("screen mode id:i:2\n")
+    assert "/dynamic-resolution" in build_display_args(path, "", False)
+    # ...and it is not duplicated when the user already asked for it.
+    args = build_display_args(path, "/dynamic-resolution", False)
+    assert args.count("/dynamic-resolution") == 1
+    # The "+" spelling counts as already present.
+    args = build_display_args(path, "+dynamic-resolution", False)
+    assert "/dynamic-resolution" not in args and "+dynamic-resolution" in args

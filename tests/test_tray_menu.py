@@ -19,11 +19,12 @@ def test_workspaces_are_disabled_headers_in_feed_order():
     assert items[0]["action"] is None
 
 
-def test_idle_resource_offers_connect_and_windowed():
+def test_idle_resource_offers_connect_and_fullscreen():
     vm = build_menu([_res("a", "Dev")], {})[1]
     assert vm["label"] == "Dev"
     assert [(c["label"], c["action"]) for c in vm["children"]] == [
-        ("Connect", ("connect", "a")), ("Connect (windowed)", ("connect-windowed", "a"))]
+        ("Connect", ("connect", "a")),
+        ("Connect (fullscreen)", ("connect-fullscreen", "a"))]
 
 
 def test_connected_resource_offers_focus_and_disconnect():
