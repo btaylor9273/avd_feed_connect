@@ -122,48 +122,41 @@ therefore passes FreeRDP's own override explicitly:
 
 ### Signing in with a smart card (CAC / PIV)
 
-Some organizations require a smart card and accept nothing else. The card has
-to sign the TLS handshake itself, which the app's embedded sign-in window
-cannot do reliably — so turn on **Settings → Sign-in → Sign in using my
-browser**. Sign-in then happens in your normal browser, which already knows how
-to use your card, and the app catches the result on a short-lived
-`http://127.0.0.1:<port>` listener so nothing has to be copied by hand. The
-connection-time token uses the same listener, via FreeRDP's
-`/azure:avd-access:`.
+Many organizations require a smart card and accept nothing else. The app reads
+the card directly: when Entra asks for a client certificate, it offers the
+card's **PIV Authentication** certificate (PIV slot 9A) and prompts for your
+PIN in the app window. This is on by default whenever a card is readable.
 
-**This app never touches your card, your reader or your PIN.** There is no
-PKCS#11 code here and no smart card redirection into the session; your browser
-owns all of it. Make sure your browser can see the card before you start —
-for Chrome:
+**The private key never leaves the card.** The app reads only the certificate;
+GnuTLS has the card itself sign the TLS handshake, through the bundled OpenSC
+PKCS#11 module and the host's `pcscd`. Your PIN is held in memory for the life
+of the process — never written to settings, the keyring, or any log — and is
+cleared on sign-out. A wrong PIN is never retried automatically, because a CAC
+locks after a few failures.
 
-```bash
-modutil -dbdir sql:$HOME/.pki/nssdb -list      # should list an OpenSC module
-```
+If that does not work on your card, **Settings → Sign-in → Sign in using my
+browser instead** hands sign-in to your normal browser, which has its own
+PKCS#11 setup. The only redirect URI registered for this public client is a
+Microsoft page the app cannot read, so that path asks you to paste one address
+back; it is the fallback, not the default.
 
-and in Firefox, *Settings → Privacy & Security → Security Devices*.
+**In-session card redirection is not implemented.** The card is used to sign
+*in*; it is not forwarded into the remote desktop, so CAC-signed email or
+`.mil` sites opened inside the session will not see it. The plumbing for it is
+present (pcsc-lite, OpenSC and `--socket=pcsc` are all bundled) — only
+FreeRDP's `/smartcard` flag and a setting are missing.
 
-If sign-in still reports **`AADSTS500192`** ("no valid certificate was
-detected") while your browser clearly can see the card, the problem is on the
-Entra side rather than in any client. Two things to raise with whoever
-administers the tenant:
-
-* the issuing CA chain (for a DoD CAC, the DoD root and intermediates) must be
-  uploaded to the tenant's trusted certificate store, or the sign-in endpoint
-  will not advertise it as acceptable and your browser sends no certificate;
-* the certificate must map to your account. On a DoD CAC the only certificate
-  usable for TLS client authentication is the **PIV Authentication** one, and
-  it identifies you by **EDIPI** (`<edipi>@mil`) — *not* your `@army.mil`
-  address, which lives on the e-mail certificates. The tenant's
-  certificate-based-authentication username binding has to match whichever one
-  your card actually carries.
-
-You can see what your own card carries with:
+Both paths need a reader the host can see:
 
 ```bash
-pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so \
-    --read-object --type cert --id 01 -o /tmp/piv.der
-openssl x509 -inform der -in /tmp/piv.der -noout -ext subjectAltName -ext extendedKeyUsage
+systemctl status pcscd     # must be running on the HOST
+pcsc_scan -c               # should list your reader with the card inserted
 ```
+
+Note that OpenSC is pinned to the **PIV-II** driver (`/app/etc/opensc.conf`).
+A DoD CAC is both a PIV card and a CAC, and OpenSC 0.26 otherwise prefers its
+`cac` driver, which exposes objects labelled "CAC Cert 4"/"CAC Cert 5" with no
+identifiable authentication certificate.
 
 ## Silent connection sign-in
 
@@ -221,65 +214,44 @@ headphones during a Teams call) **freezes the whole session**.
 
 ## Install
 
-[![Latest release](https://img.shields.io/github/v/release/btaylor9273/avd_feed_connect)](https://github.com/btaylor9273/avd_feed_connect/releases/latest)
-
-**Easiest — one click / one command** (from the signed repo on GitHub Pages):
-
-👉 **[Install (avd_feed_connect.flatpakref)](https://btaylor9273.github.io/avd_feed_connect/avd_feed_connect.flatpakref)**
-
-Opening that file installs the app through GNOME Software / your Flatpak handler.
-Or from a terminal:
+Clone the repository and build it. Every dependency — SDL3, FreeRDP, OpenSC,
+pcsc-lite and the rest — is pinned in the manifest and fetched by
+`flatpak-builder`, so there is nothing else to install by hand.
 
 ```bash
-flatpak install --user https://btaylor9273.github.io/avd_feed_connect/avd_feed_connect.flatpakref
+flatpak install --user flathub org.gnome.Platform//51 org.gnome.Sdk//51 org.flatpak.Builder
+
+git clone https://github.com/btaylor9273/avd_feed_connect.git
+cd avd_feed_connect
+flatpak run org.flatpak.Builder --user --install --force-clean --ccache build-dir \
+    io.github.btaylor9273.avd_feed_connect.yml
+
 flatpak run io.github.btaylor9273.avd_feed_connect
 ```
 
-This adds a small signed remote so the app also **updates** with
-`flatpak update`. The GNOME 51 runtime is pulled from Flathub automatically.
+The first build takes a while (FreeRDP dominates it). Later builds reuse the
+cache — `--force-clean` only clears the staging directory, not the sources.
 
-**Alternative — single-file bundle** from the
-[latest release](https://github.com/btaylor9273/avd_feed_connect/releases/latest):
+The manifest builds **the checked-out tree**, so your own changes are picked up
+with no extra steps. To build with no network at all, see
+`docs/OFFLINE-BUILD.md`, which also covers producing a single `.flatpak` bundle
+to hand to someone else.
 
-```bash
-flatpak install --user avd_feed_connect.flatpak
-```
+### What you need on the machine
 
-*(A Flathub listing is planned; until then, use either method above.)*
+* A **smart card reader** with `pcscd` running on the host — the app bundles
+  OpenSC and the pcsc-lite client library, but not the daemon or the reader
+  driver:
 
-### Build it yourself
+  ```bash
+  systemctl status pcscd     # must be running
+  pcsc_scan -c               # should list your reader with the card inserted
+  ```
+* An X11 session or XWayland. The bundled FreeRDP SDL client is unstable on
+  native Wayland, so connections are forced onto X11.
 
-```bash
-flatpak install flathub org.gnome.Platform//51 org.gnome.Sdk//51 org.flatpak.Builder
-flatpak run org.flatpak.Builder --user --install --force-clean build-dir \
-  io.github.btaylor9273.avd_feed_connect.yml
-flatpak run io.github.btaylor9273.avd_feed_connect
-```
-
-> **Building your own code changes?** The manifest above pins the app module to a
-> published commit (a `type: git` source), so it builds the *released* code, not
-> your working tree — and the release workflow and the planned Flathub listing
-> both rely on it staying a pinned git source. To build local changes, copy the
-> manifest and point that one copy at the working tree instead of editing the
-> tracked file:
->
-> ```bash
-> cp io.github.btaylor9273.avd_feed_connect.yml local.yml
-> ```
->
-> In `local.yml`, change only the last module's (`avd-feed-connect`) source from
-> the `type: git` / `url` / `commit` block to:
->
-> ```yaml
->     sources:
->       - type: dir
->         path: .
-> ```
->
-> then `flatpak run org.flatpak.Builder --user --install --force-clean build-dir local.yml`.
-> Keep the copy at the repo root (so the `patches/…` paths still resolve) and
-> don't commit it. For quick GUI/CLI iteration without a Flatpak rebuild, run it
-> unpackaged (below).
+There is no hosted install or signed update channel for this fork — no
+`.flatpakref`, no releases. Build from source.
 
 ## Run unpackaged (development)
 
@@ -542,55 +514,47 @@ gateway — the password is only for the session-host logon.
 
 ## Microsoft Teams calls
 
-Teams **chat and file sharing work**, and **call audio (plus, experimentally,
-video) can be media-optimized** by a bundled add-in — see *Teams call
-optimization* below. Microsoft's Teams optimization, the *WebRTC Redirector*
-that hands call media to the client over a dedicated virtual channel, is
-officially only in the Windows App and Microsoft Remote Desktop clients, and
-upstream FreeRDP has no such channel.
+Teams **chat, file sharing and calls work**, using your redirected microphone
+and camera (a Bluetooth headset works too — audio follows whatever your host's
+default PulseAudio device is).
 
-With optimization **off** (the default), Teams runs call media **on the session
-host itself** (no "AVD Media Optimized" banner). That only works if the host can
-reach Teams' media relays directly — outbound **UDP 3478–3481** to the
-Teams/Microsoft 365 media IP ranges. On host pools where that egress is locked
-down, calls started inside the session fail to connect (Teams logs a
-`MediaWhitelistingIssue` / `no relays` ICE error) even though the same account
-places calls fine from the Windows App, where media is redirected to the local
-device instead.
+Calls run **on the session host**, not locally, so there is no "AVD Media
+Optimized" banner. That only works if the host can reach Teams' media relays
+directly — outbound **UDP 3478–3481** to the Teams/Microsoft 365 media IP
+ranges. On host pools where that egress is locked down, calls started inside
+the session fail to connect (Teams logs a `MediaWhitelistingIssue` / `no
+relays` ICE error) even though the same account places calls fine from the
+Windows App, where media is redirected to the local device instead.
 
-### Teams call optimization (beta)
+### Why there is no media optimization here
 
-The app bundles [**freerdp-teams-redir**](https://github.com/vchegwidden/freerdp-teams-redir),
-an unofficial FreeRDP 3 add-in that implements the client side of that
-redirector, so call media runs on **your local microphone, speakers and camera**
-via libwebrtc instead of the session host's route to the Teams relays. Turn it
-on in **Settings → Optimize Teams calls** (off by default). After connecting,
-**restart Teams in the session once**; Teams then shows **"AVD media
-optimized"** on a call.
+Microsoft's Teams optimization — the *WebRTC Redirector* that hands call media
+to the client over a dedicated virtual channel — ships only in the Windows App
+and Microsoft Remote Desktop clients, and upstream FreeRDP has no such channel.
 
-- **Audio is the solid part**, and is what the setting enables on its own.
-- **Camera and video are experimental** and off by default (a second, nested
-  checkbox). While optimization is on, Teams takes its camera from this add-in,
-  so with video **off** a call has **no camera** — other apps in the session
-  still use the normal redirected camera as usual. With video **on** you get
-  your webcam in calls, but it is early: your video opens in a separate window,
-  sharing your own screen is not supported, and because the add-in runs inside
-  the FreeRDP process a crash in it can end the session.
+Upstream bundles [**freerdp-teams-redir**](https://github.com/vchegwidden/freerdp-teams-redir),
+an unofficial add-in that implements the client side of it. **This fork does
+not bundle it**: that module builds with network access and resolves Rust
+crates plus a prebuilt libwebrtc binary at build time, so it cannot be built
+air-gapped and its dependency set is not pinned or auditable — see
+`docs/DEPENDENCIES.md`. The **Settings → Optimize Teams calls** options remain
+visible but do nothing without the plugin.
 
-With optimization off, the options for calls are the host-side path above: ask
-your admins to permit the session host's outbound UDP to the Teams relays, or
-place the call from a Teams client outside the VM.
+If host-side calling is blocked for you, the options are to ask your admins to
+permit the session host's outbound UDP to the Teams relays, place the call from
+a Teams client outside the VM, or maintain a separate build that bundles the
+add-in (accepting that it is not air-gappable).
 
 ## Status
 
 Working: feed discovery, keyring-backed sign-in with click-through re-auth,
-the workspace grid, silent connect, camera/mic/multi-monitor, and self-updating
-Flatpak install. Contributions welcome.
+CAC/PIV certificate sign-in, Azure US Government endpoints, the workspace grid,
+silent connect, and camera/mic/multi-monitor redirection. Feedback welcome.
 
 ## License
 
-MIT for this app's code. Bundled components keep their own licenses (FreeRDP:
-Apache-2.0, SDL: Zlib).
+MIT for this app's code. Bundled components keep their own licenses — see
+`docs/DEPENDENCIES.md` for the full inventory with versions and pinned hashes.
 
 ### Optional GNOME connection workspaces
 
