@@ -1819,8 +1819,9 @@ class AvdApp(Gtk.Application):
         if force_desktop and rdp_is_remoteapp(path):
             set_rdp_desktop_mode(path)
         # Remote scale follows the client's display scale (HiDPI → 200%, standard/
-        # ultrawide → 100%); AVD_SCALE overrides. Multi-monitor and any other flag
-        # are opt-in via AVD_EXTRA_ARGS (e.g. "/multimon /gfx"), until a settings UI.
+        # ultrawide → 100%); AVD_SCALE overrides. Multi-monitor follows the
+        # monitor count unless the Monitors setting or AVD_MULTIMON says otherwise,
+        # and spans them in the default dynamic-resolution mode too.
         # --- display config: env var > per-resource/default setting > auto ---
         extra = shlex.join(security.options)
         if fullscreen:

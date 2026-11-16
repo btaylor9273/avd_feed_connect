@@ -426,15 +426,19 @@ differed, Microsoft would see an inconsistent device for that session and refuse
 to connect. The setting changes only the sign-in window's identity — not the
 remote session — and takes effect on your next sign-in.
 
-**Resizable window (dynamic resolution):** by default the session opens
-fullscreen. If you'd rather have a resizable window whose remote resolution
-follows the window as you resize it, add `/dynamic-resolution` to that
-workspace's **Advanced flags**. The session then starts windowed (toggle
-fullscreen any time with Ctrl+Shift+Enter). Fullscreen and `/dynamic-resolution`
-can't be combined, so the app only forces fullscreen when this flag isn't set;
-it also clears the feed's smart-sizing property, which would otherwise conflict.
-Dynamic resolution runs on a **single monitor** — when it's set, the app ignores
-multi-monitor selection for that session (leave it off to span monitors).
+**Dynamic resolution (the default):** the remote resolution follows your
+local display rather than whatever fixed mode the feed specifies. On a single
+monitor the session opens as a resizable window and the remote desktop tracks
+it as you resize (toggle fullscreen any time with Ctrl+Shift+Enter). With two
+or more monitors — or **Monitors** set to *All monitors* — the session spans
+every monitor, one borderless window per screen, and the remote layout follows
+your monitors (including plugging one in or out mid-session). The feed's
+smart-sizing property is cleared, since it would otherwise conflict.
+
+To get a **fixed-size fullscreen session** instead, using the feed's own
+screen mode, add `-dynamic-resolution` to that workspace's **Advanced flags**
+(the tray's **Connect (fullscreen)** does the same for one connection). The
+**Monitors** choice applies either way.
 
 **Advanced flags reference.** The **Advanced flags** field takes raw
 `sdl-freerdp` options, appended verbatim to the connection. Anything FreeRDP
@@ -442,7 +446,7 @@ accepts works; these are the ones people reach for most:
 
 | Flag | What it does |
 |---|---|
-| `/dynamic-resolution` | Open a resizable window; the remote resolution follows the window instead of a fixed fullscreen size (see above). |
+| `-dynamic-resolution` | Turn off the default dynamic resolution: a fixed-size fullscreen session using the feed's screen mode (see above). |
 | `/d:AzureAD` | Override the NLA logon domain (the app sends an empty domain by default; a few host pools want `AzureAD` or an on-prem domain instead). |
 | `/multimon` / `-multimon` | Force multi-monitor on / off, overriding the automatic monitor-count choice. Same as the **Monitors** setting. |
 | `/gfx` | Force the GFX (RemoteFX/H.264) graphics pipeline — smoother video on capable host pools. |
@@ -458,14 +462,15 @@ many as you like. Flags that take a value use a colon, with no space around it.
 Examples (each line is what you'd put in the field):
 
 ```
-/dynamic-resolution
+-dynamic-resolution
 ```
-Resizable window, remote follows the window size.
+Fixed-size fullscreen session using the feed's screen mode, instead of the
+default window-following resolution.
 
 ```
-/dynamic-resolution /gfx
+-dynamic-resolution /gfx
 ```
-Resizable window **and** the H.264 graphics pipeline — two flags, space-separated.
+Fixed fullscreen **and** the H.264 graphics pipeline — two flags, space-separated.
 
 ```
 /d:AzureAD
@@ -474,10 +479,10 @@ Force the NLA logon domain to `AzureAD` (for a host pool that rejects the empty
 default).
 
 ```
-/dynamic-resolution /gfx -wallpaper -themes
+/gfx -wallpaper -themes
 ```
-A slow-link profile: resizable window, GFX codec, and strip the remote wallpaper
-and themes to save bandwidth — four flags at once.
+A slow-link profile: GFX codec, and strip the remote wallpaper and themes to
+save bandwidth — three flags at once.
 
 If a value ever contains a space, quote it like on a shell (e.g.
 `/drive:home,"/my folder"`); the field is parsed with the same rules.

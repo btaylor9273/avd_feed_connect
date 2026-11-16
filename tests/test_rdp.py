@@ -26,24 +26,29 @@ def test_dynamic_display_settings_in_freerdp(tmp_path):
     parse.argtypes = [ctypes.c_void_p, ctypes.c_int,
                       ctypes.POINTER(ctypes.c_char_p), ctypes.c_int]
     parse.restype = ctypes.c_int
-    path = _rdp(tmp_path, "smart sizing:i:1\nscreen mode id:i:2\n"
-                "dynamic resolution:i:1\nuse multimon:i:1\n")
-    args = ["sdl-freerdp", path] + build_display_args(path, "/dynamic-resolution", True)
-    argv = (ctypes.c_char_p * len(args))(*(arg.encode() for arg in args))
-    settings = library.freerdp_settings_new(0)
-    assert settings
-    try:
-        assert parse(settings, len(args), argv, False) == 0
-        expected = {388: ("FreeRDP_UseMultimon", False),
-                    1537: ("FreeRDP_Fullscreen", False),
-                    1551: ("FreeRDP_SmartSizing", False),
-                    1558: ("FreeRDP_DynamicResolutionUpdate", True),
-                    5185: ("FreeRDP_SupportDisplayControl", True)}
-        for key, (name, value) in expected.items():
-            assert library.freerdp_settings_get_name_for_key(key).decode() == name
-            assert bool(library.freerdp_settings_get_bool(settings, key)) == value, name
-    finally:
-        library.freerdp_settings_free(settings)
+    # FreeRDP turns /multimon into a fullscreen (per-monitor, borderless)
+    # session itself; what matters is that the dynamic-resolution flags
+    # survive next to it, so the layout can be sent over the display channel.
+    for want_multimon in (False, True):
+        path = _rdp(tmp_path, "smart sizing:i:1\nscreen mode id:i:2\n"
+                    "dynamic resolution:i:1\nuse multimon:i:1\n")
+        args = ["sdl-freerdp", path] + build_display_args(
+            path, "/dynamic-resolution", want_multimon)
+        argv = (ctypes.c_char_p * len(args))(*(arg.encode() for arg in args))
+        settings = library.freerdp_settings_new(0)
+        assert settings
+        try:
+            assert parse(settings, len(args), argv, False) == 0
+            expected = {388: ("FreeRDP_UseMultimon", want_multimon),
+                        1537: ("FreeRDP_Fullscreen", want_multimon),
+                        1551: ("FreeRDP_SmartSizing", False),
+                        1558: ("FreeRDP_DynamicResolutionUpdate", True),
+                        5185: ("FreeRDP_SupportDisplayControl", True)}
+            for key, (name, value) in expected.items():
+                assert library.freerdp_settings_get_name_for_key(key).decode() == name
+                assert bool(library.freerdp_settings_get_bool(settings, key)) == value, name
+        finally:
+            library.freerdp_settings_free(settings)
 
 
 def test_dynamic_resolution_clears_conflicting_feed_settings(tmp_path):
@@ -67,14 +72,32 @@ def test_dynamic_resolution_adds_missing_properties(tmp_path):
 
 
 def test_dynamic_display_args_override_conflicting_modes(tmp_path):
+    """Smart sizing and a fixed fullscreen conflict with a window that follows
+    the display and are dropped; the monitor choice does not and is kept
+    (re-emitted once, from the resolved choice, not copied verbatim)."""
     for flag in ("/dynamic-resolution", "+dynamic-resolution"):
         for extra in (f"/smart-sizing:1280x720 /f /multimon {flag}",
                       f"{flag} /smart-sizing +f +multimon"):
             path = _rdp(tmp_path, "smart sizing:i:1\nuse multimon:i:1\n")
-            args = build_display_args(path, extra + ' /drive:home,"/my folder"', True)
-            assert args == ["-multimon", flag, "/drive:home,/my folder"]
+            args = build_display_args(path, extra + ' /drive:home,"/my folder"', False)
+            assert args == ["/multimon", flag, "/drive:home,/my folder"]
             assert "smart sizing:i:0" in open(path).read().splitlines()
-            assert "use multimon:i:0" in open(path).read().splitlines()
+            assert "use multimon:i:1" in open(path).read().splitlines()
+
+
+def test_dynamic_resolution_spans_monitors_when_wanted(tmp_path):
+    """With more than one monitor (or "All monitors") the default session has
+    to span them, like the Windows App does. Dynamic resolution used to force
+    a single monitor, so the window only ever covered the one it opened on."""
+    path = _rdp(tmp_path, "screen mode id:i:2\nuse multimon:i:1\n")
+    args = build_display_args(path, "", True)
+    assert args == ["/multimon", "/dynamic-resolution"]
+    assert "use multimon:i:1" in open(path).read().splitlines()
+    # ...and a single-monitor choice still wins over the feed's default.
+    path = _rdp(tmp_path, "screen mode id:i:2\nuse multimon:i:1\n")
+    args = build_display_args(path, "", False)
+    assert args == ["-multimon", "/dynamic-resolution"]
+    assert "use multimon:i:0" in open(path).read().splitlines()
 
 
 def test_non_dynamic_display_preserves_smart_sizing(tmp_path):
