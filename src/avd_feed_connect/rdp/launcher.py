@@ -45,7 +45,13 @@ def build_display_args(path, extra, want_multimon):
 
     if dynamic:
         set_rdp_dynamic_resolution(path)
-        want_multimon = False
+        # Multi-monitor is independent of dynamic resolution in the bundled
+        # SDL client: /multimon opens one borderless window per monitor and
+        # the display channel then sends the whole layout, which is also what
+        # lifts a wide layout past the 4096x2048 connect-time cap. So the
+        # monitor choice is kept; only the flags that conflict with a window
+        # whose size follows the local display are dropped (the multimon
+        # spelling is re-emitted below from the resolved choice).
         options = [option for option in options
                    if option.lstrip("/+-").partition(":")[0]
                    not in ("smart-sizing", "f", "multimon")]
