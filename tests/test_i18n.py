@@ -85,7 +85,7 @@ def test_catalogs_cover_source_and_preserve_placeholders():
                     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
                         assert arg.value in base, (path, arg.value)
     for labels in (storage.SCALE_LABELS, storage.MULTIMON_LABELS, storage.CERT_LABELS,
-                   storage.HOTKEY_LABELS, storage.UA_LABELS):
+                   storage.HOTKEY_LABELS, storage.UA_LABELS, storage.GRAB_LABELS):
         assert all(label in base or label.endswith('%') for label in labels)
 
 

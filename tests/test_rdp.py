@@ -1,7 +1,7 @@
 """build_argv: the sdl-freerdp command line for a CLI connection."""
 
 from avd_feed_connect.rdp import build_argv, set_rdp_multimon
-from avd_feed_connect.rdp.launcher import build_display_args
+from avd_feed_connect.rdp.launcher import build_display_args, build_grab_args
 from avd_feed_connect.rdp.resources import (
     set_rdp_dynamic_resolution, rdp_is_remoteapp, set_rdp_desktop_mode)
 
@@ -439,3 +439,20 @@ def test_dynamic_resolution_always_passes_the_freerdp_flag(tmp_path):
     # The "+" spelling counts as already present.
     args = build_display_args(path, "+dynamic-resolution", False)
     assert "/dynamic-resolution" not in args and "+dynamic-resolution" in args
+
+
+def test_grab_args_follow_the_resolved_choice():
+    """The Windows key and desktop shortcuts go where the launcher decided."""
+    assert build_grab_args("", True) == ["/grab-keyboard"]
+    assert build_grab_args("/dynamic-resolution /gfx", False) == ["-grab-keyboard"]
+
+
+def test_grab_args_yield_to_an_explicit_flag():
+    """A grab-keyboard flag typed into the advanced flags is passed through
+    untouched and never doubled; a value that merely contains the words is not
+    a flag."""
+    for extra in ("/grab-keyboard", "-grab-keyboard", "+grab-keyboard",
+                  "/gfx /grab-keyboard:off"):
+        assert build_grab_args(extra, True) == [], extra
+        assert build_grab_args(extra, False) == [], extra
+    assert build_grab_args("/drive:grab-keyboard,/tmp", False) == ["-grab-keyboard"]

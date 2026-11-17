@@ -186,5 +186,10 @@
   "Could not read the certificate on your smart card.": "No se pudo leer el certificado de tu tarjeta inteligente.",
   "Connect (fullscreen)": "Conectar (pantalla completa)",
   "Use my smart card in the session": "Usar mi tarjeta inteligente en la sesión",
-  "With a smart card, the app asks for your PIN when the card is used and keeps it only until you quit — it is never saved. Using it in the session forwards your reader to the remote desktop, for CAC-signed mail and sites.": "Con una tarjeta inteligente, la aplicación pide tu PIN cuando se usa la tarjeta y lo conserva solo hasta que salgas; nunca se guarda. Usarla en la sesión reenvía tu lector al escritorio remoto, para correo y sitios firmados con CAC."
+  "With a smart card, the app asks for your PIN when the card is used and keeps it only until you quit — it is never saved. Using it in the session forwards your reader to the remote desktop, for CAC-signed mail and sites.": "Con una tarjeta inteligente, la aplicación pide tu PIN cuando se usa la tarjeta y lo conserva solo hasta que salgas; nunca se guarda. Usarla en la sesión reenvía tu lector al escritorio remoto, para correo y sitios firmados con CAC.",
+  "Windows key and desktop shortcuts": "Tecla Windows y atajos del escritorio",
+  "Automatic (local when in a virtual desktop)": "Automático (local en un escritorio virtual)",
+  "Send to the remote PC": "Enviar al PC remoto",
+  "Keep on the local desktop": "Mantener en el escritorio local",
+  "Sent to the remote PC, Super and Alt+Tab act in Windows and only the client shortcuts (Right Shift + M or Enter) bring you back here. Kept local, Super+PageUp/PageDown switches desktops and the Windows key opens Activities instead of Start.": "Enviados al PC remoto, Super y Alt+Tab actúan en Windows y solo los atajos del cliente (Shift derecho + M o Intro) te devuelven aquí. Mantenidos en local, Super+Re Pág/Av Pág cambia de escritorio y la tecla Windows abre Actividades en lugar de Inicio."
 }

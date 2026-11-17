@@ -404,6 +404,20 @@ shortcuts → Disabled** to pass every key through. The choice is written to
 FreeRDP's own `~/.config/freerdp/sdl-freerdp.json` (`SDL_KeyModMask`) on each
 connect; **Automatic** leaves that file untouched.
 
+**Windows key and desktop shortcuts (getting back to your own desktop).** The
+SDL client grabs the keyboard whenever the pointer is over its window, and GNOME
+honours that grab, so in a fullscreen session Super, Alt+Tab and
+Super+PageUp/PageDown all go to Windows: the only way back to the local desktop
+is a client shortcut (Right Shift + M minimizes, Right Shift + Enter leaves
+fullscreen, Right Shift + G releases the grab). **Default settings → Windows
+key and desktop shortcuts** decides who gets those keys. **Automatic** keeps the
+grab, except for a connection started in its own virtual desktop (below), where
+the keys stay local so `Super + PageUp/PageDown` switches between the remote and
+your Ubuntu desktop. **Keep on the local desktop** does that for every
+connection; **Send to the remote PC** always grabs, so the Windows key opens the
+Start menu rather than Activities. The choice is FreeRDP's `/grab-keyboard` /
+`-grab-keyboard`; typing either into **Advanced flags** overrides it.
+
 **Sign-in browser (if your organization blocks Linux at sign-in).** Some
 tenants have a Conditional Access policy that only lets you sign in from a
 **Windows device** or **Microsoft Edge**, and it decides that from the browser
@@ -449,6 +463,7 @@ accepts works; these are the ones people reach for most:
 | `-dynamic-resolution` | Turn off the default dynamic resolution: a fixed-size fullscreen session using the feed's screen mode (see above). |
 | `/d:AzureAD` | Override the NLA logon domain (the app sends an empty domain by default; a few host pools want `AzureAD` or an on-prem domain instead). |
 | `/multimon` / `-multimon` | Force multi-monitor on / off, overriding the automatic monitor-count choice. Same as the **Monitors** setting. |
+| `/grab-keyboard` / `-grab-keyboard` | Send the Windows key and desktop shortcuts to the remote PC / keep them local. Same as the **Windows key and desktop shortcuts** setting. |
 | `/gfx` | Force the GFX (RemoteFX/H.264) graphics pipeline — smoother video on capable host pools. |
 | `/network:auto` | Let FreeRDP auto-detect the link and tune codecs/latency for it. |
 | `-themes` / `-wallpaper` | Drop remote desktop themes / wallpaper to save bandwidth on slow links. |
@@ -628,6 +643,13 @@ gnome-extensions info avd-workspaces@avd-feed-connect | grep State   # -> ACTIVE
 Then turn on **Default settings → Start connection in a new virtual desktop**.
 A resource's own settings can inherit that, enable it, or disable it. Remote
 apps are unaffected, and the default is off.
+
+Such a connection leaves the keyboard ungrabbed (see **Windows key and desktop
+shortcuts** above), otherwise FreeRDP would swallow the very keys that switch
+workspaces. Come back to the session with `Super + PageUp/PageDown`, from the
+Activities overview, or with the tray's **Focus** entry. Set the setting to
+**Send to the remote PC** if you would rather have the Windows key in Windows
+and switch with Right Shift + M.
 
 The extension is required on GNOME generally, not only on Wayland: the app
 places windows by calling the extension over D-Bus, never through Shell `Eval`

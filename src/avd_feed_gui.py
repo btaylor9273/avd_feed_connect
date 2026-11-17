@@ -78,7 +78,8 @@ from avd_feed_connect.gui.workspaces import select_backend as workspace_backend 
 from avd_feed_connect.rdp.security import resolve_security  # noqa: E402
 from avd_feed_connect.rdp.attempt import ConnectionAttempt  # noqa: E402
 from avd_feed_connect.rdp.launcher import (  # noqa: E402
-    apply_client_hotkeys, build_azure_args, build_display_args, session_log_path,
+    apply_client_hotkeys, build_azure_args, build_display_args, build_grab_args,
+    session_log_path,
     HOTKEY_MODIFIER_NAMES, HOTKEY_DEFAULTS, HOTKEY_ACTIONS, HOTKEY_KEYS)
 from avd_feed_connect.rdp.resources import (  # noqa: E402
     rdp_is_remoteapp, rdp_redirects_smartcards, set_rdp_desktop_mode)
@@ -1882,6 +1883,13 @@ class AvdApp(Gtk.Application):
         if res.get("type") == "Desktop" and self._eff("new_workspace", res, session) == "on" \
                 and backend is not None and backend.available():
             workspace_title = "AVD-" + uuid.uuid4().hex
+        # A virtual-desktop session is left with Super+PageUp/PageDown, which
+        # FreeRDP's keyboard grab would swallow; everywhere else the Windows key
+        # keeps going to the remote PC unless the setting says otherwise.
+        grab_setting = self._eff("grab", res, session)      # "on"/"off"/None
+        want_grab = (grab_setting == "on") if grab_setting else workspace_title is None
+        argv += build_grab_args(extra, want_grab)
+        if workspace_title:
             # Last option wins over any custom /t flag. No resource/account data
             # enters the Shell bridge; the random title also works across PID namespaces.
             argv.append("/t:" + workspace_title)
@@ -2664,6 +2672,17 @@ class AvdApp(Gtk.Application):
         workspace_note.add_css_class("tile-sub")
         box.append(workspace_note)
 
+        # Keyboard grab: whether the Windows key and the desktop's shortcuts act
+        # in the remote PC or stay with the local desktop (see build_grab_args).
+        grab_dd = create(Gtk.DropDown, model=strings([tr(label) for label in storage.GRAB_LABELS]))
+        gv = cur.get("grab", "auto")
+        grab_dd.set_selected(storage.GRAB_VALUES.index(gv) if gv in storage.GRAB_VALUES else 0)
+        box.append(self._form_row(tr("Windows key and desktop shortcuts"), grab_dd))
+        grab_note = create(Gtk.Label, xalign=0, wrap=True,
+            label=tr("Sent to the remote PC, Super and Alt+Tab act in Windows and only the client shortcuts (Right Shift + M or Enter) bring you back here. Kept local, Super+PageUp/PageDown switches desktops and the Windows key opens Activities instead of Start."))
+        grab_note.add_css_class("tile-sub")
+        box.append(grab_note)
+
         # Sign-in browser identity (User-Agent). Lets a tenant that blocks Linux
         # at sign-in via Conditional Access be satisfied by posing as Edge/Chrome
         # on Windows (issue #28). Stored value is the literal UA string; "Custom…"
@@ -2725,6 +2744,7 @@ class AvdApp(Gtk.Application):
                 "sec": storage.SEC_VALUES[sec_dd.get_selected()],
                 "hotkeys": hotkeys,
                 "new_workspace": workspace_values[workspace_dd.get_selected()],
+                "grab": storage.GRAB_VALUES[grab_dd.get_selected()],
                 "extra_args": extra_entry.get_text().strip(),
             }
             if ua_dd is not None:   # Default settings only; account-wide (issue #28)
@@ -2739,6 +2759,7 @@ class AvdApp(Gtk.Application):
             if entry["scale"] == "auto" and entry["multimon"] == "auto" \
                     and entry["cert"] == "auto" and entry["sec"] == "auto" and entry["hotkeys"] == "auto" \
                     and entry["new_workspace"] == ("auto" if res else "off") \
+                    and entry["grab"] == "auto" \
                     and entry.get("user_agent", "auto") == "auto" \
                     and entry.get("remoteapp", "auto") == "auto" \
                     and not entry["extra_args"]:
