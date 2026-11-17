@@ -76,8 +76,8 @@ from avd_feed_connect.gui.workspaces import select_backend as workspace_backend 
 from avd_feed_connect.rdp.security import resolve_security  # noqa: E402
 from avd_feed_connect.rdp.attempt import ConnectionAttempt  # noqa: E402
 from avd_feed_connect.rdp.launcher import (  # noqa: E402
-    apply_client_hotkeys, build_azure_args, build_display_args, build_grab_args,
-    session_log_path,
+    apply_client_hotkeys, build_azure_args, build_channel_args, build_display_args,
+    build_grab_args, session_log_path,
     HOTKEY_MODIFIER_NAMES, HOTKEY_DEFAULTS, HOTKEY_ACTIONS, HOTKEY_KEYS)
 from avd_feed_connect.rdp.resources import (  # noqa: E402
     rdp_is_remoteapp, rdp_redirects_smartcards, set_rdp_desktop_mode)
@@ -1887,6 +1887,7 @@ class AvdApp(Gtk.Application):
         grab_setting = self._eff("grab", res, session)      # "on"/"off"/None
         want_grab = (grab_setting == "on") if grab_setting else workspace_title is None
         argv += build_grab_args(extra, want_grab)
+        argv += build_channel_args(extra)
         if workspace_title:
             # Last option wins over any custom /t flag. No resource/account data
             # enters the Shell bridge; the random title also works across PID namespaces.

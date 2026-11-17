@@ -1,7 +1,8 @@
 """build_argv: the sdl-freerdp command line for a CLI connection."""
 
 from avd_feed_connect.rdp import build_argv, set_rdp_multimon
-from avd_feed_connect.rdp.launcher import build_display_args, build_grab_args
+from avd_feed_connect.rdp.launcher import (build_channel_args, build_display_args,
+                                           build_grab_args)
 from avd_feed_connect.rdp.resources import (
     set_rdp_dynamic_resolution, rdp_is_remoteapp, set_rdp_desktop_mode)
 
@@ -456,3 +457,17 @@ def test_grab_args_yield_to_an_explicit_flag():
         assert build_grab_args(extra, True) == [], extra
         assert build_grab_args(extra, False) == [], extra
     assert build_grab_args("/drive:grab-keyboard,/tmp", False) == ["-grab-keyboard"]
+
+
+def test_channel_args_drop_the_feeds_video_channels():
+    """The geometry and video channels the .rdp enables are switched back off."""
+    assert build_channel_args("") == ["-video", "-geometry"]
+    assert build_channel_args("/dynamic-resolution /gfx") == ["-video", "-geometry"]
+
+
+def test_channel_args_yield_to_an_explicit_flag():
+    """A video or geometry flag in the advanced flags is the user's call and is
+    passed through untouched; a value that merely contains the word is not a flag."""
+    for extra in ("/video", "+video", "-video", "/geometry", "-geometry", "/gfx +video"):
+        assert build_channel_args(extra) == [], extra
+    assert build_channel_args("/drive:video,/tmp") == ["-video", "-geometry"]

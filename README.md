@@ -640,6 +640,16 @@ gnome-extensions enable avd-workspaces@avd-feed-connect
 gnome-extensions info avd-workspaces@avd-feed-connect | grep State   # -> ACTIVE
 ```
 
+Already had it installed? Copy it again and log out and back in: version 2
+works around a GNOME Shell bug (present in 46, [gnome-shell#8114]) where a
+window that reaches a workspace while the switch animation is running leaves
+the shell throwing `record is undefined` and the desktop looking frozen until
+you log out. A multi-monitor session maps one window per monitor and used to
+trip it on every connection; the extension now switches once the windows have
+settled and fills in the missing animation record if one still slips through.
+
+[gnome-shell#8114]: https://gitlab.gnome.org/GNOME/gnome-shell/-/issues/8114
+
 Then turn on **Default settings → Start connection in a new virtual desktop**.
 A resource's own settings can inherit that, enable it, or disable it. Remote
 apps are unaffected, and the default is off.

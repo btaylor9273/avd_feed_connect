@@ -22,7 +22,7 @@ themselves, not asserted from memory.
 | `libcbor` | [libcbor.git](https://github.com/PJK/libcbor.git) | `6730c20ab487` | MIT (LICENSE.md) | doxygen-theme |
 | `libfido2` | [libfido2.git](https://github.com/Yubico/libfido2.git) | `b974e7cf2ee7` | BSD (LICENSE) | — |
 | `freerdp` | [FreeRDP.git](https://github.com/FreeRDP/FreeRDP.git) | `97eff6ddfbbf` | Apache-2.0 (LICENSE) | — |
-| `pcsc-lite` | [pcsc-lite-2.5.3.tar.xz](https://pcsclite.apdu.fr/files/pcsc-lite-2.5.3.tar.xz) | sha256:fe2bb733ecf95e52768907eb00da9f9f3daf180960283e514a05dcc090afa3bd | BSD (also mentions GPL) (COPYING) | — |
+| `pcsc-lite` | [pcsc-lite_2.0.3.orig.tar.bz2](https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/pcsc-lite/2.0.3-1build1/pcsc-lite_2.0.3.orig.tar.bz2) | sha256:f42ee9efa489e9ff5d328baefa26f9c515be65021856e78d99ad1f0ead9ec85d | BSD (also mentions GPL) (COPYING) | — |
 | `opensc` | [opensc-0.26.1.tar.gz](https://github.com/OpenSC/OpenSC/releases/download/0.26.1/opensc-0.26.1.tar.gz) | sha256:f16291a031d86e570394762e9f35eaf2fcbc2337a49910f3feae42d54e1688cb | LGPL-2.1 (also mentions GPL) (COPYING) | — |
 | `avd-feed-connect` | this repo | — | MIT (LICENSE) | — |
 

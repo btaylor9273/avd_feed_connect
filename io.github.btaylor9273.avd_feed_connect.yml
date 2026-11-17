@@ -220,14 +220,22 @@ modules:
   # pcsc-lite is the CLIENT library only; pcscd runs on the HOST and is reached
   # through --socket=pcsc, so none of the daemon's dependencies are wanted.
   - name: pcsc-lite
-    buildsystem: meson
+    # 2.0.3 is the release Ubuntu 24.04 LTS ships as pcscd, and the IPC
+    # protocol minor version must match the HOST daemon's: a newer client
+    # (2.5.x speaks 4:6, this one 4:4) is first refused, logged by the host's
+    # pcscd as "Communication protocol mismatch!" at CRITICAL, and only then
+    # retried in compatibility mode -- for every context FreeRDP opens, so
+    # dozens of times per connection. Upstream no longer hosts this release;
+    # the archive is the untouched upstream tarball as mirrored by Ubuntu.
+    buildsystem: autotools
     config-opts:
-      - -Dlibsystemd=false
-      - -Dlibudev=false
-      - -Dlibusb=false
-      - -Dpolkit=false
-      - -Dserial=false
-      - -Dusbdropdir=/app/lib/pcsc/drivers
+      - --disable-libsystemd
+      - --disable-libudev
+      - --disable-libusb
+      - --disable-usb
+      - --disable-polkit
+      - --disable-serial
+      - --enable-usbdropdir=/app/lib/pcsc/drivers
     cleanup:
       - /bin
       - /sbin
@@ -237,8 +245,8 @@ modules:
       - /share/man
     sources:
       - type: archive
-        url: https://pcsclite.apdu.fr/files/pcsc-lite-2.5.3.tar.xz
-        sha256: fe2bb733ecf95e52768907eb00da9f9f3daf180960283e514a05dcc090afa3bd
+        url: https://launchpad.net/ubuntu/+archive/primary/+sourcefiles/pcsc-lite/2.0.3-1build1/pcsc-lite_2.0.3.orig.tar.bz2
+        sha256: f42ee9efa489e9ff5d328baefa26f9c515be65021856e78d99ad1f0ead9ec85d
 
   # OpenSC provides the PKCS#11 module that reads a CAC/PIV card. GnuTLS (via
   # glib-networking, which this runtime builds WITH PKCS#11) loads it through
