@@ -11,12 +11,10 @@ Env overrides: AVD_TENANT (default "organizations"), AVD_UPN.
 Add "devicecode" as a second arg to force the old device-code flow.
 """
 
-import os
+import shutil
 import sys
 
-from . import config
 from .accounts import ProfileRegistry, profile_dir
-import shutil
 from .feed import print_list
 
 

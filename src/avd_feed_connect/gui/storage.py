@@ -49,6 +49,15 @@ HOTKEY_LABELS = ["Automatic (FreeRDP default)", "Enabled (Right Shift + key)",
                  "Disabled (send all keys to the PC)", "Custom…", "FreeRDP defaults"]
 HOTKEY_VALUES = ["auto", "on", "off", "custom", "defaults"]
 
+# Who gets the Super (Windows) key and the desktop's own shortcuts while the
+# session has the pointer. "on" lets FreeRDP grab the keyboard, so Alt+Tab and
+# the Windows key act in the remote PC; "off" keeps them local, so GNOME's
+# workspace switching works. "auto" grabs unless the connection is placed in
+# its own virtual desktop, where Super+PageUp/PageDown is the whole point.
+GRAB_LABELS = ["Automatic (local when in a virtual desktop)", "Send to the remote PC",
+               "Keep on the local desktop"]
+GRAB_VALUES = ["auto", "on", "off"]
+
 # Workspace placement can inherit per resource; application defaults cannot.
 WORKSPACE_LABELS = ["Use Default settings", "Enabled", "Disabled"]
 WORKSPACE_VALUES = ["auto", "on", "off"]

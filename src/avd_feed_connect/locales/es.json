@@ -38,7 +38,6 @@
   "Please sign in with the selected work account.": "Iniciar sesión con la cuenta laboral seleccionada.",
   "Couldn't refresh workspaces — showing saved list": "No se pudieron actualizar los espacios de trabajo; se muestra la lista guardada",
   "Feed error: {error}": "Error de la fuente: {error}",
-  "your account": "tu cuenta",
   "Signed in as {account}": "Sesión iniciada como {account}",
   "{count} resource": "{count} recurso",
   "{count} resources": "{count} recursos",
@@ -163,10 +162,7 @@
   "Continue": "Continuar",
   "Which Microsoft cloud is this account in?": "¿En qué nube de Microsoft está esta cuenta?",
   "Choose US Government for a .mil or GCC High account. This cannot be changed later without signing the account in again.": "Elige Gobierno de EE. UU. para una cuenta .mil o GCC High. Esto no se puede cambiar después sin volver a iniciar sesión en la cuenta.",
-  "Sign in using my browser": "Iniciar sesión con mi navegador",
   "Open the browser again": "Abrir el navegador de nuevo",
-  "Could not open a local port to finish sign-in: {error}": "No se pudo abrir un puerto local para completar el inicio de sesión: {error}",
-  "Could not open your browser. Use “Open the browser again”, or copy the address from the log.": "No se pudo abrir tu navegador. Usa «Abrir el navegador de nuevo» o copia la dirección del registro.",
   "Could not open your browser.": "No se pudo abrir tu navegador.",
   "SIGN-IN": "INICIO DE SESIÓN",
   "Sign in with your smart card in the browser window that just opened. You will end on a blank Microsoft page — copy its whole address from the address bar and paste it below.": "Inicia sesión con tu tarjeta inteligente en la ventana del navegador que se acaba de abrir. Terminarás en una página de Microsoft en blanco: copia su dirección completa de la barra de direcciones y pégala abajo.",
@@ -186,5 +182,10 @@
   "Could not read the certificate on your smart card.": "No se pudo leer el certificado de tu tarjeta inteligente.",
   "Connect (fullscreen)": "Conectar (pantalla completa)",
   "Use my smart card in the session": "Usar mi tarjeta inteligente en la sesión",
-  "With a smart card, the app asks for your PIN when the card is used and keeps it only until you quit — it is never saved. Using it in the session forwards your reader to the remote desktop, for CAC-signed mail and sites.": "Con una tarjeta inteligente, la aplicación pide tu PIN cuando se usa la tarjeta y lo conserva solo hasta que salgas; nunca se guarda. Usarla en la sesión reenvía tu lector al escritorio remoto, para correo y sitios firmados con CAC."
+  "With a smart card, the app asks for your PIN when the card is used and keeps it only until you quit — it is never saved. Using it in the session forwards your reader to the remote desktop, for CAC-signed mail and sites.": "Con una tarjeta inteligente, la aplicación pide tu PIN cuando se usa la tarjeta y lo conserva solo hasta que salgas; nunca se guarda. Usarla en la sesión reenvía tu lector al escritorio remoto, para correo y sitios firmados con CAC.",
+  "Windows key and desktop shortcuts": "Tecla Windows y atajos del escritorio",
+  "Automatic (local when in a virtual desktop)": "Automático (local en un escritorio virtual)",
+  "Send to the remote PC": "Enviar al PC remoto",
+  "Keep on the local desktop": "Mantener en el escritorio local",
+  "Sent to the remote PC, Super and Alt+Tab act in Windows and only the client shortcuts (Right Shift + M or Enter) bring you back here. Kept local, Super+PageUp/PageDown switches desktops and the Windows key opens Activities instead of Start.": "Enviados al PC remoto, Super y Alt+Tab actúan en Windows y solo los atajos del cliente (Shift derecho + M o Intro) te devuelven aquí. Mantenidos en local, Super+Re Pág/Av Pág cambia de escritorio y la tecla Windows abre Actividades en lugar de Inicio."
 }

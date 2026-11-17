@@ -68,6 +68,23 @@ def build_display_args(path, extra, want_multimon):
         "/multimon" if want_multimon else "-multimon"] + options
 
 
+def build_grab_args(extra, want_grab):
+    """Decide who receives the Super (Windows) key and the desktop's shortcuts.
+
+    sdl-freerdp grabs the keyboard whenever the pointer is over its window
+    (FreeRDP's GrabKeyboard default), and the bundled SDL asks GNOME to honour
+    that grab under XWayland. In a fullscreen session the pointer is always
+    over the window, so Super, Alt+Tab and Super+PageUp/PageDown all reach
+    Windows and the only way back to the local desktop is a client hotkey.
+    ``want_grab`` False leaves those keys to the local desktop. A grab-keyboard
+    flag the user typed into the extra flags wins over the resolved choice.
+    """
+    for option in shlex.split(extra):
+        if option.lstrip("/+-").partition(":")[0] == "grab-keyboard":
+            return []
+    return ["/grab-keyboard" if want_grab else "-grab-keyboard"]
+
+
 # sdl-freerdp reserves <modifier>+key for its own shortcuts (D disconnects, Enter
 # toggles fullscreen, ...), swallowing those keys before the remote sees them.
 # The modifier lives in its user config file, not on the command line.
