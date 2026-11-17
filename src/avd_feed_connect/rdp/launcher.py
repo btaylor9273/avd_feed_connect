@@ -85,6 +85,24 @@ def build_grab_args(extra, want_grab):
     return ["/grab-keyboard" if want_grab else "-grab-keyboard"]
 
 
+def build_channel_args(extra):
+    """Turn off the video-redirection channels the feed's .rdp switches on.
+
+    AVD feeds carry ``videoplaybackmode:i:1``, which makes FreeRDP load the
+    geometry-tracking and video-optimized-remoting channels. The session host
+    reopens the geometry channel on every display-layout change and the client
+    refuses the second instance ("Channel already connected, terminating"), so
+    after the first multi-monitor renegotiation the pair is dead weight that
+    logs an error per change. Nothing here needs them: Windows App's multimedia
+    redirection is a browser extension, not this channel. A video or geometry
+    flag typed into the extra flags is passed through instead.
+    """
+    for option in shlex.split(extra):
+        if option.lstrip("/+-").partition(":")[0] in ("video", "geometry"):
+            return []
+    return ["-video", "-geometry"]
+
+
 # sdl-freerdp reserves <modifier>+key for its own shortcuts (D disconnects, Enter
 # toggles fullscreen, ...), swallowing those keys before the remote sees them.
 # The modifier lives in its user config file, not on the command line.
