@@ -155,13 +155,6 @@ class ProfileRegistry:
                     pass
         return clouds.resolve(key)
 
-    def set_cloud(self, profile_id, cloud_key):
-        """Pin an account to a cloud (the Add account chooser / the override)."""
-        profile = next(p for p in self.profiles if p['id'] == profile_id)
-        profile['cloud'] = clouds.resolve(cloud_key).key
-        self.save()
-        return profile
-
     def upsert(self, claims, profile_id=None, cloud=None):
         if not claims.get('tid') or not claims.get('oid'):
             raise ValueError(tr('Missing account identity'))

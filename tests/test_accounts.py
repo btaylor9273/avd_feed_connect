@@ -194,15 +194,6 @@ def test_a_garbage_cloud_falls_back_without_discarding_the_registry(tmp_path):
     assert not list(tmp_path.glob('accounts.json.invalid-*'))
 
 
-def test_set_cloud(tmp_path):
-    registry = ProfileRegistry(str(tmp_path))
-    profile = registry.upsert(claims_from_token(token()))
-    registry.set_cloud(profile['id'], 'usgov')
-    assert ProfileRegistry(str(tmp_path)).cloud_for(profile['id']).key == 'usgov'
-    registry.set_cloud(profile['id'], 'nonsense')
-    assert ProfileRegistry(str(tmp_path)).cloud_for(profile['id']).key == 'commercial'
-
-
 def test_cloud_is_inferred_from_a_cached_rdp_gateway(tmp_path):
     """Accounts saved before clouds existed carry no key; pointing them at the
     commercial endpoints would silently break a working US Government account."""

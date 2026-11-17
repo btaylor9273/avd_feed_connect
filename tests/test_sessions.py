@@ -1,5 +1,4 @@
 import threading
-import time
 
 from avd_feed_connect.gui.session import AccountSession
 from avd_feed_connect.accounts import ProfileRegistry

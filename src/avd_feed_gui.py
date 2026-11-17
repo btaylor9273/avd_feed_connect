@@ -30,7 +30,6 @@ Runtime: PyGObject with Gtk 4.0, WebKit 6.0 (all in the GNOME 51 Flatpak
 runtime).
 """
 
-import json
 import os
 import re as _re
 import sys
@@ -39,7 +38,6 @@ import time
 import urllib.request
 import urllib.parse
 import hashlib
-import base64
 import secrets
 import shutil
 import signal

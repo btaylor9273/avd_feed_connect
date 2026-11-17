@@ -66,9 +66,6 @@ class AvdClient:
     def set_upn_from_token(self, tok):
         return self.oauth.set_upn_from_token(tok)
 
-    def has_token(self):
-        return self.tokens.has()
-
     def load_token_record(self):
         return self.tokens.load()
 

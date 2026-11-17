@@ -6,9 +6,9 @@ import time). Anything that changes per signed-in session — the user's UPN, th
 last refresh error — lives on :class:`~avd_feed_connect.auth.oauth.OAuthClient`
 instead, never here.
 
-The endpoint constants below describe ONE cloud: the process-wide default from
+``CLOUD`` below is ONE cloud: the process-wide default from
 :func:`avd_feed_connect.clouds.resolve` (commercial unless ``$AVD_CLOUD`` says
-otherwise). They remain for the CLI and for callers with no account in hand,
+otherwise). It remains for the CLI and for callers with no account in hand,
 but anything that runs per account should take its endpoints from that
 account's :class:`~avd_feed_connect.clouds.Cloud` instead — a single install
 can hold a commercial account and a US Government account at the same time.
@@ -29,9 +29,6 @@ CLIENT_ID = "a85cf173-4192-42f8-81fa-777a763e6e2c"  # Microsoft Remote Desktop (
 
 # Process-wide default cloud; per-account clouds come from the profile registry.
 CLOUD = clouds.resolve()
-SCOPE = CLOUD.scope
-DISCOVERY = CLOUD.discovery
-LOGIN = CLOUD.login(TENANT)
 # Registered redirect for the public MS Remote Desktop client; the browser
 # lands here (a blank page) with ?code=… after an interactive sign-in.
 #
@@ -68,12 +65,6 @@ def find_sdl_freerdp():
 SDL = find_sdl_freerdp()
 # Only needed unpackaged (Flatpak resolves libs via rpath); empty = don't touch.
 SDL_LIBS = os.environ.get("AVD_SDL_LIBS", os.path.join(HOME, "opt", "sdl3", "lib"))
-
-AAD_LOGIN_HOST = CLOUD.login_host
-
-# Hosts a bearer token may be sent to. Feed XML supplies the feed, .rdp and icon
-# URLs, so they are checked before the Authorization header is attached.
-TRUSTED_SUFFIXES = CLOUD.trusted_suffixes
 
 
 def is_aad_login_url(url, cloud=None):

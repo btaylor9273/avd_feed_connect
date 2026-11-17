@@ -53,12 +53,7 @@ def fake_tools(monkeypatch, modules=P11_KIT_MODULES, certs=P11TOOL_CERTS):
     return calls
 
 
-# -- token discovery --------------------------------------------------------
-
-def test_token_discovery_skips_the_trust_module(monkeypatch):
-    fake_tools(monkeypatch)
-    assert smartcard.token_uris() == (TOKEN,)
-
+# -- module discovery -------------------------------------------------------
 
 def test_module_discovery_skips_the_trust_module(monkeypatch):
     """Enumeration keys off the module path, not a token filter: filtering
@@ -68,9 +63,8 @@ def test_module_discovery_skips_the_trust_module(monkeypatch):
     assert smartcard._modules() == (("opensc-pkcs11", MODULE_PATH),)
 
 
-def test_no_tools_means_no_tokens(monkeypatch):
+def test_no_tools_means_no_modules(monkeypatch):
     monkeypatch.setattr(smartcard, "_run", lambda argv: "")
-    assert smartcard.token_uris() == ()
     assert smartcard._modules() == ()
     assert smartcard.available() is False
 

@@ -55,10 +55,6 @@ class CardCertificate:
     label: str
     token: str
 
-    @property
-    def is_preferred(self):
-        return _rank(self.label) == 0
-
 
 def _rank(label):
     """Sort key for certificate choice; lower is better.
@@ -98,20 +94,6 @@ def _modules():
             path = stripped.split(":", 1)[1].strip()
             if path.startswith("/"):
                 found.append((name, path))
-    return tuple(found)
-
-
-def token_uris():
-    """PKCS#11 token URIs for every inserted card (p11-kit's trust module aside)."""
-    name, found = None, []
-    for line in _run(["p11-kit", "list-modules"]).splitlines():
-        stripped = line.strip()
-        if stripped.startswith("module:"):
-            name = stripped.split(":", 1)[1].strip()
-            continue
-        match = re.match(r"uri:\s*(pkcs11:\S*token=\S*)", stripped)
-        if match and name and _TRUST_HINT not in name.lower():
-            found.append(match.group(1))
     return tuple(found)
 
 
